@@ -1,0 +1,1373 @@
+openapi: 3.0.3
+info:
+  title: Flower Shop Management API
+  description: API для управления цветочным магазином с товарами, заказами, складом, профилем и командой
+  version: 1.3.0
+  contact:
+    name: Flower Shop Support
+    email: support@flowershop.kz
+
+servers:
+  - url: https://api.flowershop.kz/v1
+    description: Production server
+  - url: https://staging-api.flowershop.kz/v1
+    description: Staging server
+
+paths:
+  # === PRODUCTS ENDPOINTS ===
+  /products:
+    get:
+      summary: Получить список товаров
+      tags: [Products]
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [vitrina, catalog]
+          description: Тип товара
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, inactive]
+          description: Статус товара
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Список товаров
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  products:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Product'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+
+    post:
+      summary: Создать новый товар
+      tags: [Products]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateProductRequest'
+      responses:
+        '201':
+          description: Товар создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /products/{productId}:
+    get:
+      summary: Получить товар по ID
+      tags: [Products]
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Данные товара
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      summary: Обновить товар
+      tags: [Products]
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UpdateProductRequest'
+      responses:
+        '200':
+          description: Товар обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Удалить товар
+      tags: [Products]
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Товар удален
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /products/{productId}/toggle:
+    patch:
+      summary: Переключить статус товара (активен/неактивен)
+      tags: [Products]
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Статус товара изменен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+
+  # === ORDERS ENDPOINTS ===
+  /orders:
+    get:
+      summary: Получить список заказов
+      tags: [Orders]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [new, paid, accepted, assembled, in-transit, completed]
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Список заказов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  orders:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Order'
+                  total:
+                    type: integer
+
+    post:
+      summary: Создать новый заказ
+      tags: [Orders]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '201':
+          description: Заказ создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+
+  /orders/{orderId}:
+    get:
+      summary: Получить заказ по ID
+      tags: [Orders]
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Данные заказа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      summary: Обновить заказ
+      tags: [Orders]
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOrderRequest'
+      responses:
+        '200':
+          description: Заказ обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+
+    delete:
+      summary: Удалить заказ
+      tags: [Orders]
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Заказ удален
+
+  /orders/{orderId}/status:
+    patch:
+      summary: Обновить статус заказа
+      tags: [Orders]
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [new, paid, accepted, assembled, in-transit, completed]
+                comment:
+                  type: string
+              required:
+                - status
+      responses:
+        '200':
+          description: Статус заказа обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+
+  # === INVENTORY ENDPOINTS ===
+  /inventory:
+    get:
+      summary: Получить товары на складе
+      tags: [Inventory]
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum: [flowers, greenery, accessories]
+        - name: low_stock
+          in: query
+          schema:
+            type: boolean
+          description: Показать только товары с низким остатком
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Список товаров на складе
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/InventoryItem'
+                  total:
+                    type: integer
+
+    post:
+      summary: Добавить товар на склад (поставка)
+      tags: [Inventory]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInventorySupplyRequest'
+      responses:
+        '201':
+          description: Поставка принята
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  supply_id:
+                    type: string
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/InventoryItem'
+
+  /inventory/{itemId}:
+    get:
+      summary: Получить товар склада по ID
+      tags: [Inventory]
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Данные товара склада
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryItemDetail'
+
+    put:
+      summary: Обновить товар склада
+      tags: [Inventory]
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateInventoryItemRequest'
+      responses:
+        '200':
+          description: Товар склада обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryItem'
+
+  # === CUSTOMERS ENDPOINTS ===
+  /customers:
+    get:
+      summary: Получить список клиентов
+      tags: [Customers]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, vip, inactive]
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Поиск по имени или телефону
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Список клиентов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  customers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Customer'
+                  total:
+                    type: integer
+
+    post:
+      summary: Создать нового клиента
+      tags: [Customers]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCustomerRequest'
+      responses:
+        '201':
+          description: Клиент создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+
+  /customers/{customerId}:
+    get:
+      summary: Получить клиента по ID
+      tags: [Customers]
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Данные клиента
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      summary: Обновить клиента
+      tags: [Customers]
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCustomerRequest'
+      responses:
+        '200':
+          description: Клиент обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+
+    delete:
+      summary: Удалить клиента
+      tags: [Customers]
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Клиент удален
+
+  /customers/{customerId}/orders:
+    get:
+      summary: Получить заказы клиента
+      tags: [Customers]
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [new, paid, accepted, assembled, in-transit, completed]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: Заказы клиента
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  orders:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Order'
+                  total:
+                    type: integer
+
+  # === PROFILE & TEAM ENDPOINTS ===
+  /profile:
+    get:
+      summary: Получить профиль текущего флориста
+      tags: [Profile]
+      responses:
+        '200':
+          description: Профиль флориста
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FloristProfile'
+
+    put:
+      summary: Обновить профиль флориста
+      tags: [Profile]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFloristProfileRequest'
+      responses:
+        '200':
+          description: Профиль обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FloristProfile'
+
+  /shop-info:
+    get:
+      summary: Получить информацию о магазине
+      tags: [Profile]
+      responses:
+        '200':
+          description: Информация о магазине
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShopInfo'
+
+    put:
+      summary: Обновить информацию о магазине
+      tags: [Profile]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateShopInfoRequest'
+      responses:
+        '200':
+          description: Информация о магазине обновлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShopInfo'
+
+  # === DASHBOARD ENDPOINTS ===
+  /dashboard/stats:
+    get:
+      summary: Получить статистику для дашборда
+      tags: [Dashboard]
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [today, week, month]
+          default: today
+      responses:
+        '200':
+          description: Статистика дашборда
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardStats'
+
+  # === FILE UPLOAD ENDPOINTS ===
+  /uploads/images:
+    post:
+      summary: Загрузить изображения
+      tags: [Files]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        '200':
+          description: Изображения загружены
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  urls:
+                    type: array
+                    items:
+                      type: string
+
+  /uploads/videos:
+    post:
+      summary: Загрузить видео
+      tags: [Files]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Видео загружено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+
+components:
+  schemas:
+    # === PRODUCTS ===
+    Product:
+      type: object
+      properties:
+        id:
+          type: integer
+        image:
+          type: string
+          description: URL главного изображения
+        images:
+          type: array
+          items:
+            type: string
+          description: Массив URL всех изображений
+        title:
+          type: string
+        price:
+          type: string
+          description: Цена в формате "12 000 ₸"
+        is_available:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        type:
+          type: string
+          enum: [vitrina, catalog]
+        # Поля для витрины
+        width:
+          type: string
+          description: Ширина в см
+        height:
+          type: string
+          description: Высота в см
+        # Поля для каталога
+        video:
+          type: string
+          description: URL видео
+        duration:
+          type: string
+          description: Время изготовления в минутах
+        discount:
+          type: string
+          description: Процент скидки
+        ingredients:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductIngredient'
+        florist_work_cost:
+          type: number
+          description: Стоимость работы флориста
+        colors:
+          type: array
+          items:
+            type: string
+          description: Цвета букета
+        catalog_width:
+          type: string
+        catalog_height:
+          type: string
+        production_time:
+          type: string
+          enum: [short, medium, long]
+
+    ProductIngredient:
+      type: object
+      properties:
+        inventory_item_id:
+          type: integer
+        name:
+          type: string
+        quantity:
+          type: number
+        unit:
+          type: string
+        cost_per_unit:
+          type: number
+
+    CreateProductRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        price:
+          type: string
+        type:
+          type: string
+          enum: [vitrina, catalog]
+        images:
+          type: array
+          items:
+            type: string
+            format: binary
+        # Витрина поля
+        width:
+          type: string
+        height:
+          type: string
+        # Каталог поля
+        video:
+          type: string
+          format: binary
+        duration:
+          type: string
+        discount:
+          type: string
+        ingredients:
+          type: string
+          description: JSON строка с составом
+        florist_work_cost:
+          type: number
+        colors:
+          type: string
+          description: JSON строка с цветами
+        catalog_width:
+          type: string
+        catalog_height:
+          type: string
+        production_time:
+          type: string
+          enum: [short, medium, long]
+      required:
+        - title
+        - price
+        - type
+
+    UpdateProductRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        price:
+          type: string
+        images:
+          type: array
+          items:
+            type: string
+            format: binary
+        video:
+          type: string
+          format: binary
+        duration:
+          type: string
+        discount:
+          type: string
+        ingredients:
+          type: string
+          description: JSON строка с составом
+        florist_work_cost:
+          type: number
+        colors:
+          type: string
+          description: JSON строка с цветами
+        width:
+          type: string
+        height:
+          type: string
+        catalog_width:
+          type: string
+        catalog_height:
+          type: string
+        production_time:
+          type: string
+          enum: [short, medium, long]
+
+    # === ORDERS ===
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+        number:
+          type: string
+        status:
+          type: string
+          enum: [new, paid, accepted, assembled, in-transit, completed]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        # Связи с товарами
+        main_product_id:
+          type: integer
+        main_product:
+          $ref: '#/components/schemas/Product'
+        additional_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+        # Связи с клиентами
+        recipient_id:
+          type: integer
+        recipient:
+          $ref: '#/components/schemas/Customer'
+        sender_id:
+          type: integer
+        sender:
+          $ref: '#/components/schemas/Customer'
+        # Доставка
+        delivery_type:
+          type: string
+          enum: [delivery, pickup]
+        delivery_address:
+          type: string
+        delivery_city:
+          type: string
+        delivery_date:
+          type: string
+          enum: [today, tomorrow]
+        delivery_time:
+          type: string
+        # Дополнительная информация
+        postcard:
+          type: string
+        comment:
+          type: string
+        anonymous:
+          type: boolean
+        # Оплата
+        payment:
+          type: object
+          properties:
+            amount:
+              type: number
+            status:
+              type: string
+              enum: [paid, unpaid]
+            method:
+              type: string
+        # Исполнители
+        executor:
+          type: object
+          properties:
+            florist:
+              type: string
+            courier:
+              type: string
+        # Фото
+        photo_before_delivery:
+          type: string
+
+    OrderItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        product_id:
+          type: integer
+        product_title:
+          type: string
+        product_image:
+          type: string
+        quantity:
+          type: integer
+        unit_price:
+          type: number
+        total_price:
+          type: number
+
+    CreateOrderRequest:
+      type: object
+      properties:
+        main_product_id:
+          type: integer
+        recipient_id:
+          type: integer
+        sender_id:
+          type: integer
+        additional_items:
+          type: array
+          items:
+            type: object
+            properties:
+              product_id:
+                type: integer
+              quantity:
+                type: integer
+        delivery_type:
+          type: string
+          enum: [delivery, pickup]
+        delivery_address:
+          type: string
+        delivery_city:
+          type: string
+        delivery_date:
+          type: string
+          enum: [today, tomorrow]
+        delivery_time:
+          type: string
+        postcard:
+          type: string
+        comment:
+          type: string
+        anonymous:
+          type: boolean
+        payment_amount:
+          type: number
+      required:
+        - main_product_id
+        - recipient_id
+        - sender_id
+        - delivery_type
+        - delivery_city
+        - delivery_date
+        - delivery_time
+        - payment_amount
+
+    UpdateOrderRequest:
+      type: object
+      properties:
+        delivery_address:
+          type: string
+        delivery_date:
+          type: string
+          enum: [today, tomorrow]
+        delivery_time:
+          type: string
+        postcard:
+          type: string
+        comment:
+          type: string
+        anonymous:
+          type: boolean
+        executor:
+          type: object
+          properties:
+            florist:
+              type: string
+            courier:
+              type: string
+
+    # === INVENTORY ===
+    InventoryItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        category:
+          type: string
+          enum: [flowers, greenery, accessories]
+        price:
+          type: string
+          description: Цена за единицу
+        unit:
+          type: string
+        quantity:
+          type: integer
+        min_quantity:
+          type: integer
+        supplier:
+          type: string
+        image:
+          type: string
+        last_delivery:
+          type: string
+          format: date
+        next_delivery:
+          type: string
+          format: date
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    InventoryItemDetail:
+      allOf:
+        - $ref: '#/components/schemas/InventoryItem'
+        - type: object
+          properties:
+            series:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  delivery_date:
+                    type: string
+                    format: date
+                  quantity:
+                    type: integer
+                  price_per_unit:
+                    type: number
+                  remaining_quantity:
+                    type: integer
+
+    CreateInventorySupplyRequest:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              category:
+                type: string
+                enum: [flowers, greenery, accessories]
+              quantity:
+                type: integer
+              price_per_unit:
+                type: number
+              unit:
+                type: string
+              supplier:
+                type: string
+              min_quantity:
+                type: integer
+              image:
+                type: string
+            required:
+              - name
+              - category
+              - quantity
+              - price_per_unit
+              - unit
+      required:
+        - items
+
+    UpdateInventoryItemRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        min_quantity:
+          type: integer
+        supplier:
+          type: string
+        next_delivery:
+          type: string
+          format: date
+
+    # === CUSTOMERS ===
+    Customer:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        phone:
+          type: string
+          description: Телефон в формате "+7 (777) 123-45-67"
+        email:
+          type: string
+        member_since:
+          type: string
+          format: date
+        total_orders:
+          type: integer
+        total_spent:
+          type: number
+        last_order_date:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [active, vip, inactive]
+        notes:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateCustomerRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Имя клиента
+        phone:
+          type: string
+          description: Телефон в формате "+7 (777) 123-45-67"
+        email:
+          type: string
+          description: Email (необязательно)
+      required:
+        - name
+        - phone
+
+    UpdateCustomerRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        status:
+          type: string
+          enum: [active, vip, inactive]
+        notes:
+          type: string
+
+    # === PROFILE & TEAM ===
+    FloristProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        phone:
+          type: string
+        position:
+          type: string
+          enum: [owner, senior, florist, assistant]
+        bio:
+          type: string
+        avatar:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    UpdateFloristProfileRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        position:
+          type: string
+          enum: [owner, senior, florist, assistant]
+        bio:
+          type: string
+        avatar:
+          type: string
+          format: binary
+
+    ShopInfo:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        address:
+          type: string
+        phone:
+          type: string
+        working_hours:
+          type: string
+        city:
+          type: string
+        social_media:
+          type: object
+          properties:
+            instagram:
+              type: string
+            whatsapp:
+              type: string
+            telegram:
+              type: string
+        updated_at:
+          type: string
+          format: date-time
+
+    UpdateShopInfoRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        address:
+          type: string
+        phone:
+          type: string
+        working_hours:
+          type: string
+        city:
+          type: string
+        social_media:
+          type: object
+          properties:
+            instagram:
+              type: string
+            whatsapp:
+              type: string
+            telegram:
+              type: string
+
+    # === DASHBOARD ===
+    DashboardStats:
+      type: object
+      properties:
+        orders:
+          type: object
+          properties:
+            total:
+              type: integer
+            today:
+              type: integer
+            pending:
+              type: integer
+        revenue:
+          type: object
+          properties:
+            total:
+              type: string
+            today:
+              type: string
+            this_month:
+              type: string
+        customers:
+          type: object
+          properties:
+            total:
+              type: integer
+            returning:
+              type: integer
+            vip:
+              type: integer
+            new:
+              type: integer
+        products:
+          type: object
+          properties:
+            total:
+              type: integer
+            active:
+              type: integer
+            vitrina:
+              type: integer
+            catalog:
+              type: integer
+
+  responses:
+    BadRequest:
+      description: Неверный запрос
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              message:
+                type: string
+
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              message:
+                type: string
+
+    InternalServerError:
+      description: Внутренняя ошибка сервера
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              message:
+                type: string
