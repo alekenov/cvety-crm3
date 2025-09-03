@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Plus, Search, Calendar, Phone, TrendingUp } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { CustomerAPI, Customer } from "../services/customerApi";
 // Temporary inline components to avoid import issues
 function StatusBadge({ status, variant = 'default' }: { status: string; variant?: 'default' | 'success' | 'warning' | 'error' }) {
   const variants = {
@@ -85,25 +87,18 @@ function PageHeader({ title, subtitle, onBack, actions }: {
   );
 }
 
-interface Customer {
-  id: number;
-  name: string;
-  phone: string;
+// Customer interface is now imported from customerApi.ts
+// Adding avatar field to match the API Customer type
+interface CustomerWithAvatar extends Customer {
   avatar?: string;
-  memberSince: Date;
-  totalOrders: number;
-  totalSpent: number;
-  lastOrderDate: Date;
-  status: 'active' | 'vip' | 'inactive';
-  notes?: string;
 }
 
-interface CustomerItemProps extends Customer {
+interface CustomerItemProps extends CustomerWithAvatar {
   onClick: (id: number) => void;
 }
 
-// Мок данные клиентов
-const mockCustomers: Customer[] = [
+// Mock data removed - now using real API data
+/* const mockCustomers: CustomerWithAvatar[] = [
   {
     id: 1,
     name: "Анна Петрова",
@@ -187,7 +182,7 @@ const mockCustomers: Customer[] = [
     lastOrderDate: new Date(2024, 4, 22),
     status: 'active'
   }
-];
+]; */
 
 function formatDate(date: Date): string {
   const now = new Date();
@@ -215,7 +210,7 @@ function formatCurrency(amount: number): string {
 
 
 
-function CustomerItem({ id, name, phone, memberSince, totalOrders, totalSpent, status, onClick }: CustomerItemProps) {
+function CustomerItem({ id, name, phone, memberSince, totalOrders, totalSpent, status, lastOrderDate, onClick }: CustomerItemProps) {
   
   const statusVariantMap = {
     active: 'success' as const,
@@ -235,7 +230,6 @@ function CustomerItem({ id, name, phone, memberSince, totalOrders, totalSpent, s
       onClick={() => onClick(id)}
     >
       <div className="flex items-center justify-between">
-        {/* Customer Info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-gray-900 truncate">{name}</span>
@@ -255,7 +249,6 @@ function CustomerItem({ id, name, phone, memberSince, totalOrders, totalSpent, s
           </div>
         </div>
         
-        {/* Stats */}
         <div className="text-right flex-shrink-0">
           <div className="text-sm text-gray-900 mb-1">
             {totalOrders} {totalOrders === 1 ? 'заказ' : totalOrders < 5 ? 'заказа' : 'заказов'}
@@ -273,13 +266,39 @@ interface CustomersProps {
   onNavigateBack: () => void;
   onViewCustomer: (customerId: number) => void;
   onAddCustomer?: () => void;
-  customers: Customer[];
+  customers: CustomerWithAvatar[];
 }
 
 export function Customers({ onNavigateBack, onViewCustomer, onAddCustomer, customers: propCustomers }: CustomersProps) {
-  const [customers] = useState<Customer[]>(propCustomers.length > 0 ? propCustomers : mockCustomers);
+  const navigate = useNavigate();
+  const [customers, setCustomers] = useState<CustomerWithAvatar[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'active' | 'vip' | 'inactive'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Load customers from API on component mount
+  useEffect(() => {
+    loadCustomers();
+  }, []);
+
+  const loadCustomers = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const apiCustomers = await CustomerAPI.fetchCustomers(20, 0, true); // Fetch 20 customers with order data for testing
+      setCustomers(apiCustomers as CustomerWithAvatar[]);
+    } catch (err) {
+      console.error('Failed to load customers:', err);
+      setError('Не удалось загрузить список клиентов');
+      // Fall back to prop customers if available
+      if (propCustomers && propCustomers.length > 0) {
+        setCustomers(propCustomers as CustomerWithAvatar[]);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Фильтрация клиентов
   const filteredCustomers = customers.filter(customer => {
@@ -300,7 +319,8 @@ export function Customers({ onNavigateBack, onViewCustomer, onAddCustomer, custo
   };
 
   const handleCustomerClick = (customerId: number) => {
-    onViewCustomer(customerId);
+    // Use React Router navigation for customer detail view
+    navigate(`/customers/${customerId}`);
   };
 
   const headerActions = (
@@ -320,6 +340,32 @@ export function Customers({ onNavigateBack, onViewCustomer, onAddCustomer, custo
     { key: 'active', label: 'Активные', count: stats.active },
     { key: 'inactive', label: 'Неактивные', count: stats.inactive }
   ];
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="bg-white min-h-screen max-w-md mx-auto flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Загрузка клиентов...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error && customers.length === 0) {
+    return (
+      <div className="bg-white min-h-screen max-w-md mx-auto flex items-center justify-center">
+        <div className="text-center px-4">
+          <p className="text-red-600 mb-4">{error}</p>
+          <Button onClick={loadCustomers} variant="outline">
+            Попробовать снова
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white min-h-screen max-w-md mx-auto">

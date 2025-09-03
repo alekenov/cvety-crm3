@@ -1,13 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ArrowLeft, Camera, Share, Check, X, ShoppingCart, CreditCard, User, Package, Truck, CheckCircle, Clock } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import svgPaths from "../imports/svg-n764ux8j24";
-import imgRectangle from "figma:asset/9407eaaf09bc0cd0735147c984706db31a71bf86.png";
-import imgRectangle1 from "figma:asset/6ac5fd2f59330fdd9f8b4e0196fdeb1e357e80e3.png";
-import imgRectangle2 from "figma:asset/d4d954b8cb8a5c7b807046d49f7e09b0f80ca5d3.png";
-import imgRectangle3 from "figma:asset/d1e4a43dfd35275968d7a4b44aa8a93a79982faa.png";
+import { fetchOrderDetail, type Order, type FrontStatus } from "../api/orders";
 
 interface OrderDetailProps {
   orderId: string;
@@ -218,40 +215,96 @@ function WhatsAppIcon() {
 }
 
 export function OrderDetail({ orderId, onClose, onEdit, onDelete, onUpdateStatus }: OrderDetailProps) {
-  const [currentStatus, setCurrentStatus] = useState('Новый');
+  const [order, setOrder] = useState<Order | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [currentStatus, setCurrentStatus] = useState<FrontStatus>('new');
   const [isEditing, setIsEditing] = useState(false);
 
   // Редактируемые поля
   const [editableData, setEditableData] = useState({
-    postcard: 'С Днем рождения! Желаем долгих лет, здоровья и терпения на всех нас! Очень любим и скучаем! Сергей, Юлия, Иван, Константин',
-    comment: 'Пожалуйста, не используйте жёлтые розы, мама их не любит',
-    address: 'ул. Иванова 23, 12',
-    deliveryDate: '03.02.2021, в течение дня',
-    recipientName: 'Светлана',
-    recipientPhone: '+7 (000) 000-00-00',
-    senderName: 'Сергей',
-    senderPhone: '+7 (000) 000-00-00',
-    senderEmail: 'sergey@gmail.com'
+    postcard: '',
+    comment: '',
+    address: '',
+    deliveryDate: '',
+    recipientName: '',
+    recipientPhone: '',
+    senderName: '',
+    senderPhone: '',
+    senderEmail: ''
   });
 
-  // Пример данных заказа - в реальном приложении будет загружаться по orderId
-  const orderData = {
-    number: orderId || '40414',
-    status: currentStatus,
-    mainProduct: {
-      image: imgRectangle3,
-      title: 'Букет «Моя прелесть»',
-      composition: 'Красная роза — 25 шт, Кустовая роза — 6 шт, Орхидея — 3 шт, Розмарин — 1 шт, Дополнительная зелень'
-    },
-    additionalItems: [
-      { image: imgRectangle, title: 'Воздушные шары', subtitle: 'Шары без рисунка — 5 шт' },
-      { image: imgRectangle1, title: 'Raffaello', subtitle: '1 шт' },
-      { image: imgRectangle2, title: 'Мишка Тедди средний', subtitle: '1 шт' }
-    ],
+  // Map status from API to Russian display text
+  const getStatusDisplay = (status: FrontStatus): string => {
+    const statusMap = {
+      'new': 'Новый',
+      'paid': 'Оплачен',
+      'accepted': 'Принят',
+      'assembled': 'Собран',
+      'in-transit': 'В пути',
+      'completed': 'Завершен'
+    };
+    return statusMap[status] || status;
+  };
+
+  // Load order data from API
+  useEffect(() => {
+    const loadOrder = async () => {
+      setIsLoading(true);
+      setError(null);
+      
+      try {
+        const result = await fetchOrderDetail(orderId);
+        if (result.success && result.data) {
+          setOrder(result.data);
+          setCurrentStatus(result.data.status);
+          
+          // Initialize editable data with real order data
+          setEditableData({
+            postcard: result.data.postcard || '',
+            comment: result.data.comment || '',
+            address: result.data.deliveryAddress || '',
+            deliveryDate: `${result.data.deliveryDate === 'today' ? 'Сегодня' : result.data.deliveryDate === 'tomorrow' ? 'Завтра' : result.data.deliveryDate}, ${result.data.deliveryTime || 'время не указано'}`,
+            recipientName: result.data.recipient.name || '',
+            recipientPhone: result.data.recipient.phone || '',
+            senderName: result.data.sender.name || '',
+            senderPhone: result.data.sender.phone || '',
+            senderEmail: result.data.sender.email || ''
+          });
+        } else {
+          setError('Не удалось загрузить заказ');
+        }
+      } catch (err) {
+        console.error('Failed to load order:', err);
+        setError('Ошибка при загрузке заказа');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (orderId) {
+      loadOrder();
+    }
+  }, [orderId]);
+
+  // Transform order data for display
+  const orderData = order ? {
+    number: order.number || order.id,
+    status: getStatusDisplay(currentStatus),
+    mainProduct: order.mainProduct ? {
+      image: order.mainProduct.image,
+      title: order.mainProduct.title,
+      composition: order.mainProduct.composition || ''
+    } : null,
+    additionalItems: order.additionalItems?.map(item => ({
+      image: item.productImage,
+      title: item.productTitle,
+      subtitle: `${item.quantity || 1} шт`
+    })) || [],
     postcard: editableData.postcard,
     comment: editableData.comment,
     delivery: {
-      city: 'Усть-Каменогорск',
+      city: order.deliveryCity,
       date: editableData.deliveryDate,
       address: editableData.address
     },
@@ -265,20 +318,26 @@ export function OrderDetail({ orderId, onClose, onEdit, onDelete, onUpdateStatus
       email: editableData.senderEmail
     },
     payment: {
-      amount: '22 000 ₸',
-      status: 'Не оплачено'
+      amount: order.payment.amount,
+      status: order.payment.status === 'paid' ? 'Оплачено' : 'Не оплачено'
     },
-    anonymous: false,
-    photoBeforeDelivery: null,
-    history: [
-      { date: '04 фев 2021 16:42', description: 'Флорист Амина М стал ответственным за заказ. Магазин Cvety.kz, г. Усть-Каменогорск.' },
-      { date: '04 фев 2021 16:38', description: 'Оплата заказа. Платёжная система: Kaspi.' },
-      { date: '04 фев 2021 16:22', description: 'Создание заказа' }
-    ].reverse() // Показываем от самого нового к старому
-  };
+    anonymous: order.anonymous,
+    photoBeforeDelivery: order.photoBeforeDelivery || null,
+    history: order.history || []
+  } : null;
 
   const handleStatusUpdate = (newStatus: string) => {
-    setCurrentStatus(newStatus);
+    // Convert display status back to API format if needed
+    const statusMap: Record<string, FrontStatus> = {
+      'Новый': 'new',
+      'Оплачен': 'paid',
+      'Принят': 'accepted',
+      'Собран': 'assembled',
+      'В пути': 'in-transit',
+      'Завершен': 'completed'
+    };
+    const apiStatus = statusMap[newStatus] || newStatus as FrontStatus;
+    setCurrentStatus(apiStatus);
     onUpdateStatus?.(newStatus);
   };
 
@@ -291,18 +350,20 @@ export function OrderDetail({ orderId, onClose, onEdit, onDelete, onUpdateStatus
   };
 
   const handleCancelEdit = () => {
-    // Сбросить изменения к исходным данным
-    setEditableData({
-      postcard: 'С Днем рождения! Желаем долгих лет, здоровья и терпения на всех нас! Очень любим и скучаем! Сергей, Юлия, Иван, Константин',
-      comment: 'Пожалуйста, не используйте жёлтые розы, мама их не любит',
-      address: 'ул. Иванова 23, 12',
-      deliveryDate: '03.02.2021, в течение дня',
-      recipientName: 'Светлана',
-      recipientPhone: '+7 (000) 000-00-00',
-      senderName: 'Сергей',
-      senderPhone: '+7 (000) 000-00-00',
-      senderEmail: 'sergey@gmail.com'
-    });
+    // Reset changes to original order data
+    if (order) {
+      setEditableData({
+        postcard: order.postcard || '',
+        comment: order.comment || '',
+        address: order.deliveryAddress || '',
+        deliveryDate: `${order.deliveryDate === 'today' ? 'Сегодня' : order.deliveryDate === 'tomorrow' ? 'Завтра' : order.deliveryDate}, ${order.deliveryTime || 'время не указано'}`,
+        recipientName: order.recipient.name || '',
+        recipientPhone: order.recipient.phone || '',
+        senderName: order.sender.name || '',
+        senderPhone: order.sender.phone || '',
+        senderEmail: order.sender.email || ''
+      });
+    }
     setIsEditing(false);
   };
 
@@ -312,6 +373,32 @@ export function OrderDetail({ orderId, onClose, onEdit, onDelete, onUpdateStatus
       [field]: value
     }));
   };
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Загрузка заказа...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error || !orderData) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="text-center">
+          <p className="text-red-600 mb-4">{error || 'Заказ не найден'}</p>
+          <Button onClick={onClose} variant="outline">
+            Вернуться к списку
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white min-h-screen">
@@ -339,16 +426,18 @@ export function OrderDetail({ orderId, onClose, onEdit, onDelete, onUpdateStatus
 
         <div className="px-4 pb-20">
           {/* Main Product */}
-          <div className="py-4 border-b border-gray-200">
-            <OrderItem 
-              image={orderData.mainProduct.image}
-              title={orderData.mainProduct.title}
-              subtitle={orderData.mainProduct.composition.length > 60 ? 
-                `${orderData.mainProduct.composition.substring(0, 60)}...` : 
-                orderData.mainProduct.composition}
-            />
-            <button className="text-gray-600 text-sm mt-1">Скрыть</button>
-          </div>
+          {orderData.mainProduct && (
+            <div className="py-4 border-b border-gray-200">
+              <OrderItem 
+                image={orderData.mainProduct.image}
+                title={orderData.mainProduct.title}
+                subtitle={orderData.mainProduct.composition && orderData.mainProduct.composition.length > 60 ? 
+                  `${orderData.mainProduct.composition.substring(0, 60)}...` : 
+                  orderData.mainProduct.composition}
+              />
+              <button className="text-gray-600 text-sm mt-1">Скрыть</button>
+            </div>
+          )}
 
           {/* Photo Before Delivery */}
           <div className="py-4 border-b border-gray-200">
@@ -522,7 +611,9 @@ export function OrderDetail({ orderId, onClose, onEdit, onDelete, onUpdateStatus
                     ) : (
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm text-gray-900">{orderData.sender.name}</span>
+                          {orderData.sender.name && (
+                            <span className="text-sm text-gray-900">{orderData.sender.name}</span>
+                          )}
                           <span className="text-sm text-gray-600">{orderData.sender.phone}</span>
                           <div className="w-4 h-4">
                             <WhatsAppIcon />
@@ -560,16 +651,16 @@ export function OrderDetail({ orderId, onClose, onEdit, onDelete, onUpdateStatus
               <div className="flex justify-between items-center py-3 px-4 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors">
                 <div className="flex items-center space-x-3">
                   <div className={`w-2.5 h-2.5 rounded-full ${
-                    currentStatus === 'Новый' ? 'bg-red-500' :
-                    currentStatus === 'Оплачен' ? 'bg-blue-500' :
-                    currentStatus === 'Принят' ? 'bg-gray-500' :
-                    currentStatus === 'Собран' ? 'bg-yellow-500' :
-                    currentStatus === 'В пути' ? 'bg-green-500' :
+                    currentStatus === 'new' ? 'bg-red-500' :
+                    currentStatus === 'paid' ? 'bg-blue-500' :
+                    currentStatus === 'accepted' ? 'bg-gray-500' :
+                    currentStatus === 'assembled' ? 'bg-yellow-500' :
+                    currentStatus === 'in-transit' ? 'bg-green-500' :
                     'bg-gray-400'
                   }`}></div>
                   <div>
                     <div className="text-sm text-gray-600">Статус</div>
-                    <div className="text-gray-900">{currentStatus}</div>
+                    <div className="text-gray-900">{getStatusDisplay(currentStatus)}</div>
                   </div>
                 </div>
                 <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ArrowLeft, Phone, Calendar, TrendingUp, Plus, Edit3, Check, X } from "lucide-react";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
+import { ApiOrder } from "../services/customerApi";
 
 interface Customer {
   id: number;
@@ -31,6 +32,7 @@ interface Order {
 interface CustomerDetailProps {
   customerId: number;
   customers: Customer[];
+  orders?: ApiOrder[]; // Real orders from API
   onClose: () => void;
   onUpdateCustomer: (customer: Customer) => void;
   onViewOrder?: (orderId: string) => void;
@@ -112,8 +114,14 @@ function formatOrderDate(date: Date): string {
   });
 }
 
-export function CustomerDetail({ customerId, customers, onClose, onUpdateCustomer, onViewOrder }: CustomerDetailProps) {
-  const customer = customers.find(c => c.id === customerId);
+export function CustomerDetail({ customerId, customers, orders, onClose, onUpdateCustomer, onViewOrder }: CustomerDetailProps) {
+  const customer = customers.find(c => {
+    // Convert both to numbers for comparison to handle string/number mismatch
+    const customerIdNum = typeof c.id === 'string' ? parseInt(c.id, 10) : c.id;
+    const searchIdNum = typeof customerId === 'string' ? parseInt(customerId, 10) : customerId;
+    return customerIdNum === searchIdNum;
+  });
+  
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [notes, setNotes] = useState(customer?.notes || '');
 
@@ -145,11 +153,31 @@ export function CustomerDetail({ customerId, customers, onClose, onUpdateCustome
     cancelled: { label: 'Отменен', color: 'bg-red-100 text-red-700' }
   };
 
-  // Фильтруем заказы этого клиента (в реальном приложении это будет API запрос)
-  const customerOrders = mockOrders.filter(order => 
-    // Простая логика: первые 4 заказа для первого клиента, следующие для второго и т.д.
-    parseInt(order.id) >= (customerId - 1) * 4 + 1 && parseInt(order.id) <= customerId * 4
-  );
+  // Transform real API orders to display format
+  const customerOrders = (orders || []).map(apiOrder => {
+    // Parse date safely - API might return invalid date format
+    let orderDate: Date;
+    try {
+      orderDate = new Date(apiOrder.DATE_INSERT.value);
+      // If date is invalid, use current date as fallback
+      if (isNaN(orderDate.getTime())) {
+        orderDate = new Date();
+      }
+    } catch {
+      orderDate = new Date();
+    }
+
+    return {
+      id: apiOrder.ID.toString(),
+      number: apiOrder.ID.toString(), // Use order ID as number for now  
+      date: orderDate,
+      total: Number(apiOrder.PRICE),
+      status: 'delivered' as const, // Default status, can be enhanced later
+      items: [
+        { name: `Заказ #${apiOrder.ID}`, quantity: 1, price: Number(apiOrder.PRICE) }
+      ]
+    };
+  });
 
   const handleSaveNotes = () => {
     const updatedCustomer = { ...customer, notes };
