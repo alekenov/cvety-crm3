@@ -1,6 +1,13 @@
-export function getTimeAgo(dateStr: string): string {
+export function getTimeAgo(dateInput: string | Date): string {
   try {
-    const date = new Date(dateStr);
+    // Handle both Date objects and string inputs
+    const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return 'Только что';
+    }
+    
     const now = new Date();
     const diffInMs = now.getTime() - date.getTime();
     const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
@@ -17,7 +24,7 @@ export function getTimeAgo(dateStr: string): string {
       return 'Только что';
     }
   } catch {
-    return dateStr;
+    return 'Только что';
   }
 }
 

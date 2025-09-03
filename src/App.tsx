@@ -5,7 +5,7 @@ import { Switch } from "./components/ui/switch";
 
 // Centralized imports
 import { Screen } from "./src/types";
-import { useAppState } from "./src/hooks/useAppState";
+import { useAppContext } from "./src/contexts/AppContext";
 import { useAppActions } from "./src/hooks/useAppActions";
 
 // Import types for inline components
@@ -109,7 +109,7 @@ function ProductItem({ id, image, title, price, isAvailable, createdAt, onToggle
               {price}
             </div>
             <div className="text-gray-600 text-sm">
-              {getTimeAgo(createdAt)}
+              {title === 'Собранный букет' ? 'Только что' : getTimeAgo(createdAt)}
             </div>
           </div>
         </div>
@@ -124,86 +124,13 @@ function ProductItem({ id, image, title, price, isAvailable, createdAt, onToggle
   );
 }
 
-function ProductsList({ products, onAddProduct, onViewProduct, onToggleProduct }: { 
-  products: Product[];
-  onAddProduct: () => void; 
-  onViewProduct: (id: number) => void;
-  onToggleProduct: (id: number) => void;
-}) {
-  const [filter, setFilter] = useState<'vitrina' | 'catalog'>('vitrina');
-
-  const vitrinaProducts = products.filter(product => product.type === 'vitrina');
-  const catalogProducts = products.filter(product => product.type === 'catalog');
-
-  const filteredProducts = filter === 'vitrina' 
-    ? vitrinaProducts.filter(product => product.isAvailable)
-    : catalogProducts;
-
-  const activeVitrinaCount = vitrinaProducts.filter(p => p.isAvailable).length;
-  const activeCatalogCount = catalogProducts.filter(p => p.isAvailable).length;
-
-  const tabs = [
-    { key: 'vitrina', label: 'Витрина', count: activeVitrinaCount },
-    { key: 'catalog', label: 'Каталог', count: activeCatalogCount }
-  ];
-
-  const headerActions = (
-    <>
-      <Button variant="ghost" size="sm" className="p-2" onClick={onAddProduct}>
-        <Plus className="w-5 h-5 text-gray-600" />
-      </Button>
-      <Button variant="ghost" size="sm" className="p-2">
-        <Search className="w-5 h-5 text-gray-600" />
-      </Button>
-    </>
-  );
-
-  return (
-    <div className="bg-white min-h-screen">
-      <PageHeader title="Товары" actions={headerActions} />
-
-      {/* Filter Tabs */}
-      <div className="p-4 border-b border-gray-100">
-        <FilterTabs 
-          tabs={tabs} 
-          activeTab={filter} 
-          onTabChange={(tab) => setFilter(tab as any)} 
-        />
-      </div>
-
-      {/* Products List */}
-      <div className="pb-20">
-        {filteredProducts.length > 0 ? (
-          filteredProducts.map((product) => (
-            <ProductItem 
-              key={product.id}
-              {...product}
-              onToggle={onToggleProduct}
-              onView={onViewProduct}
-            />
-          ))
-        ) : (
-          <EmptyState
-            icon={<Plus className="w-8 h-8 text-gray-400" />}
-            title={filter === 'vitrina' ? 'Нет товаров в витрине' : 'Нет товаров'}
-            description={
-              filter === 'vitrina' 
-                ? 'Включите товары в витрину, чтобы они отображались покупателям'
-                : 'Добавьте свой первый товар, чтобы начать продавать'
-            }
-          />
-        )}
-      </div>
-    </div>
-  );
-}
 // Component imports
 import { ProductTypeSelector } from "./components/ProductTypeSelector";
 import { AddProductForm } from "./components/AddProductForm";
 import { AddCatalogForm } from "./components/AddCatalogForm";
 import { ProductDetail } from "./components/ProductDetail";
 import { EditCatalogForm } from "./components/EditCatalogForm";
-import { Orders } from "./components/Orders";
+import OrdersList from "./components/OrdersList";
 import { Dashboard } from "./components/Dashboard";
 import { MainTabView } from "./components/MainTabView";
 import { OrderDetail } from "./components/OrderDetail";
@@ -216,20 +143,42 @@ import { Customers } from "./components/Customers";
 import { CustomerDetail } from "./components/CustomerDetail";
 import { AddCustomer } from "./components/AddCustomer";
 import { Profile } from "./components/Profile";
+import ProductsListWrapper from "./components/ProductsListWrapper";
 
 
 
 export default function App() {
   // Use centralized state and actions
-  const state = useAppState();
+  const state = useAppContext();
   
-  // Check if state loaded properly or products are loading
-  if (!state || state.isLoadingProducts) {
+  // Get current path to determine which tab should be active
+  const currentPath = window.location.pathname;
+  const isCustomersPage = currentPath === '/customers';
+  
+  // Set active tab based on current path
+  useEffect(() => {
+    if (state) {
+      if (currentPath === '/customers') {
+        state.setActiveTab('customers');
+      } else if (currentPath === '/orders') {
+        state.setActiveTab('orders');
+      } else if (currentPath === '/inventory') {
+        state.setActiveTab('inventory');
+      } else if (currentPath === '/profile') {
+        state.setActiveTab('profile');
+      } else {
+        state.setActiveTab('products');
+      }
+    }
+  }, [currentPath, state]);
+  
+  // Check if state loaded properly - but only show products loading for non-customer pages
+  if (!state || (!isCustomersPage && state.isLoadingProducts)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Загрузка товаров...</p>
+          <p className="mt-4 text-gray-600">Загрузка...</p>
         </div>
       </div>
     );
@@ -371,8 +320,8 @@ export default function App() {
           onViewInventoryItem={actions.handleViewInventoryItem}
           onStartInventoryAudit={actions.handleStartInventoryAudit}
 
-          ProductsListComponent={ProductsList}
-          OrdersComponent={(props: any) => <Orders {...props} orders={state.orders} />}
+          ProductsListComponent={ProductsListWrapper}
+          OrdersComponent={OrdersList}
           InventoryComponent={Inventory}
           CustomersComponent={(props: any) => <Customers {...props} onViewCustomer={actions.handleViewCustomer} onAddCustomer={actions.handleAddCustomer} customers={state.customers} />}
           ProfileComponent={(props: any) => <Profile {...props} showHeader={false} />}
