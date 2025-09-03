@@ -66,11 +66,7 @@
           target: 'https://cvety.kz',
           changeOrigin: true,
           secure: true,
-          followRedirects: true,
-          rewrite: (path) => {
-            // Remove trailing slash for API requests
-            return path.replace(/\/$/, '');
-          },
+          followRedirects: true
         }
       }
     },

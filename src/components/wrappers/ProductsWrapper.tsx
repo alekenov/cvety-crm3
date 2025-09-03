@@ -10,7 +10,7 @@ import { AddCatalogForm as AddCatalogFormOriginal } from '../AddCatalogForm';
 import { ProductDetail as ProductDetailOriginal } from '../ProductDetail';
 import { EditCatalogForm as EditCatalogFormOriginal } from '../EditCatalogForm';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useAppState } from '../../src/hooks/useAppState';
+import { useAppContext } from '../../src/contexts/AppContext';
 import { useAppActions } from '../../src/hooks/useAppActions';
 
 export function AddProductForm() {
@@ -28,7 +28,7 @@ export function AddCatalogForm() {
 export function ProductDetail() {
   const navigate = useNavigate();
   const { id } = useParams();
-  const state = useAppState();
+  const state = useAppContext();
   const actions = useAppActions({
     setCurrentScreen: state.setCurrentScreen,
     navigateToScreen: state.navigateToScreen,
@@ -63,7 +63,7 @@ export function ProductDetail() {
 export function EditCatalogForm() {
   const navigate = useNavigate();
   const { id } = useParams();
-  const state = useAppState();
+  const state = useAppContext();
   const actions = useAppActions({
     setCurrentScreen: state.setCurrentScreen,
     navigateToScreen: state.navigateToScreen,

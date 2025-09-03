@@ -300,13 +300,14 @@ export default function OrdersList() {
     }
   };
 
+  // Filter out completed orders and apply status filter
   const filteredOrders = activeFilter === 'all' 
-    ? orders 
-    : orders.filter(order => order.status === activeFilter);
+    ? orders.filter(order => order.status !== 'completed')
+    : orders.filter(order => order.status === activeFilter && order.status !== 'completed');
 
-  // Count orders by status for tabs
+  // Count orders by status for tabs (excluding completed)
   const statusCounts = {
-    all: orders.length,
+    all: orders.filter(o => o.status !== 'completed').length,
     new: orders.filter(o => o.status === 'new').length,
     paid: orders.filter(o => o.status === 'paid').length,
     accepted: orders.filter(o => o.status === 'accepted').length,

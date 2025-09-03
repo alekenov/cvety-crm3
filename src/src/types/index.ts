@@ -37,6 +37,7 @@ export interface Product {
   title: string;
   price: string;
   isAvailable: boolean;
+  isReady?: boolean; // Готовый товар (Собранный букет)
   createdAt: Date;
   type: 'vitrina' | 'catalog';
   // Витрина поля

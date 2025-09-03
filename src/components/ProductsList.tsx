@@ -3,33 +3,11 @@ import { Plus, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from './ui/button';
 import { Switch } from './ui/switch';
-import { fetchProducts, toggleProductActive } from '../api/products';
-import type { ProductDTO } from '../api/products';
+import { Product } from '../src/types';
+import { getTimeAgo } from '../src/utils/date';
+import { useAppContext } from '../src/contexts/AppContext';
+import { useAppActions } from '../src/hooks/useAppActions';
 
-// Convert ProductDTO to display format
-interface Product {
-  id: number;
-  image: string;
-  title: string;
-  price: string;
-  isAvailable: boolean;
-  createdAt: Date;
-  type: 'vitrina' | 'catalog';
-  width?: string;
-  height?: string;
-}
-
-function getTimeAgo(date: Date): string {
-  const now = new Date();
-  const diff = now.getTime() - date.getTime();
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-
-  if (minutes < 60) return `${minutes} минут назад`;
-  if (hours < 24) return `${hours} часов назад`;
-  return `${days} дней назад`;
-}
 
 function FilterTabs({ tabs, activeTab, onTabChange }: { 
   tabs: Array<{ key: string; label: string; count?: number }>; 
@@ -86,61 +64,50 @@ function PageHeader({ title, actions }: {
   );
 }
 
-function ProductItem({ product, onToggle, onView }: {
-  product: Product;
+function ProductItem({ id, image, title, price, isAvailable, createdAt, onToggle, onView }: Product & {
   onToggle: (id: number) => void;
   onView: (id: number) => void;
 }) {
   const handleSwitchClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onToggle(product.id);
+    onToggle(id);
   };
 
   return (
     <div 
       className="p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
-      onClick={() => onView(product.id)}
+      onClick={() => onView(id)}
     >
       <div className="flex justify-between items-start mb-3">
         <div className="flex items-center space-x-4">
           <div 
             className="w-12 h-12 bg-cover bg-center rounded-full relative overflow-hidden flex-shrink-0"
-            style={{ backgroundImage: `url('${product.image}')` }}
+            style={{ backgroundImage: `url('${image}')` }}
           >
-            {!product.isAvailable && <div className="absolute inset-0 bg-white/60"></div>}
+            {!isAvailable && <div className="absolute inset-0 bg-white/60"></div>}
           </div>
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className={`${product.isAvailable ? 'text-gray-900' : 'text-gray-500'}`}>
-                {product.title}
+              <span className={`${isAvailable ? 'text-gray-900' : 'text-gray-500'}`}>
+                {title}
               </span>
               <div className={`px-2 py-0.5 rounded text-xs ${
-                product.isAvailable ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                isAvailable ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
               }`}>
-                {product.isAvailable ? 'Активен' : 'Неактивен'}
+                {isAvailable ? 'Активен' : 'Неактивен'}
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <div className={`text-gray-700 ${!product.isAvailable ? 'text-gray-500' : ''}`}>
-                {product.price}
-              </div>
-              {product.type === 'vitrina' && (product.width || product.height) && (
-                <div className="text-sm text-gray-500">
-                  {product.width && product.height ? 
-                    `${product.width} × ${product.height} см` : 
-                    product.width ? `Ш: ${product.width} см` : 
-                    `В: ${product.height} см`}
-                </div>
-              )}
+            <div className={`text-gray-700 ${!isAvailable ? 'text-gray-500' : ''}`}>
+              {price}
             </div>
             <div className="text-gray-600 text-sm">
-              {getTimeAgo(product.createdAt)}
+              {title === 'Собранный букет' ? 'Только что' : getTimeAgo(createdAt)}
             </div>
           </div>
         </div>
         <Switch 
-          checked={product.isAvailable} 
-          onCheckedChange={() => onToggle(product.id)}
+          checked={isAvailable} 
+          onCheckedChange={() => onToggle(id)}
           onClick={handleSwitchClick}
           className="data-[state=checked]:bg-emerald-500"
         />
@@ -151,121 +118,69 @@ function ProductItem({ product, onToggle, onView }: {
 
 export default function ProductsList() {
   const navigate = useNavigate();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [filter, setFilter] = useState<'vitrina' | 'catalog'>('vitrina');
+  const state = useAppContext();
+  const actions = useAppActions({
+    setCurrentScreen: state.setCurrentScreen,
+    navigateToScreen: state.navigateToScreen,
+    navigateBack: state.navigateBack,
+    setActiveTab: state.setActiveTab,
+    setSelectedProductId: state.setSelectedProductId,
+    setSelectedOrderId: state.setSelectedOrderId,
+    setSelectedInventoryItemId: state.setSelectedInventoryItemId,
+    setSelectedCustomerId: state.setSelectedCustomerId,
+    setProducts: state.setProducts,
+    setOrders: state.setOrders,
+    setCustomers: state.setCustomers,
+    products: state.products,
+    customers: state.customers
+  });
+  
+  const products = state.products;
+  const onAddProduct = () => navigate('/products/add');
+  const onViewProduct = (id: number) => navigate(`/products/${id}`);
+  const onToggleProduct = actions.toggleProductStatus;
+  // Initialize filter from URL or default to 'vitrina'
+  const getInitialFilter = () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const filterFromUrl = urlParams.get('filter');
+    if (filterFromUrl === 'catalog') return 'catalog';
+    if (filterFromUrl === 'vitrina') return 'vitrina';
+    return 'vitrina';
+  };
+  
+  const [filter, setFilter] = useState<'vitrina' | 'catalog'>(getInitialFilter());
 
-  // Convert ProductDTO to Product
-  const convertDTOToProduct = (dto: ProductDTO): Product => {
-    // Parse date with validation
-    let createdDate = new Date();
-    if (dto.createdAt) {
-      const parsed = new Date(dto.createdAt);
-      // Check if date is valid and not in the past (before year 2000)
-      if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 2000) {
-        createdDate = parsed;
-      }
-    }
-    
-    return {
-      id: dto.id,
-      image: dto.image,
-      title: dto.title,
-      price: dto.price,
-      isAvailable: dto.isAvailable,
-      createdAt: createdDate,
-      type: dto.type,
-      width: dto.width || dto.catalogWidth,
-      height: dto.height || dto.catalogHeight,
-    };
+  const handleFilterChange = (newFilter: 'vitrina' | 'catalog') => {
+    setFilter(newFilter);
+    // Update URL with filter parameter
+    const url = new URL(window.location.href);
+    url.searchParams.set('filter', newFilter);
+    window.history.pushState({}, '', url.toString());
   };
 
-  // Load products on mount
-  useEffect(() => {
-    const loadProducts = async () => {
-      setIsLoading(true);
-      try {
-        const result = await fetchProducts({ limit: 100 });
-        if (result.success && result.data) {
-          const convertedProducts = result.data.map(convertDTOToProduct);
-          setProducts(convertedProducts);
-        }
-      } catch (error) {
-        console.error('Failed to load products:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    
-    loadProducts();
-  }, []);
+  const vitrinaProducts = products.filter((product: Product) => product.type === 'vitrina');
+  // For catalog: exclude products with "Собранный букет" in title (these are ready-made products)
+  const catalogProducts = products.filter((product: Product) => 
+    product.type === 'catalog' && !product.title.includes('Собранный букет')
+  );
 
-  const handleAddProduct = () => {
-    navigate('/products/add');
-  };
-
-  const handleViewProduct = (id: number) => {
-    navigate(`/products/${id}`);
-  };
-
-  const handleToggleProduct = async (id: number) => {
-    const product = products.find(p => p.id === id);
-    if (!product) return;
-    
-    try {
-      // Optimistically update UI
-      setProducts(prev => 
-        prev.map(p => 
-          p.id === id 
-            ? { ...p, isAvailable: !p.isAvailable }
-            : p
-        )
-      );
-      
-      // Call API
-      await toggleProductActive(id, !product.isAvailable);
-    } catch (error) {
-      console.error('Failed to toggle product status:', error);
-      // Revert on error
-      setProducts(prev => 
-        prev.map(p => 
-          p.id === id 
-            ? { ...p, isAvailable: product.isAvailable }
-            : p
-        )
-      );
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Загрузка товаров...</p>
-        </div>
-      </div>
-    );
-  }
-
-  const vitrinaProducts = products.filter(product => product.type === 'vitrina');
-  const catalogProducts = products.filter(product => product.type === 'catalog');
-
+  // IMPORTANT: Show only products of the selected type, no mixing
+  // Show all products including inactive ones (users can toggle them with switches)
   const filteredProducts = filter === 'vitrina' 
-    ? vitrinaProducts.filter(product => product.isAvailable)
+    ? vitrinaProducts
     : catalogProducts;
 
-  const activeVitrinaCount = vitrinaProducts.filter(p => p.isAvailable).length;
-  const activeCatalogCount = catalogProducts.filter(p => p.isAvailable).length;
+  const vitrinaCount = vitrinaProducts.length;
+  const catalogCount = catalogProducts.length;
 
   const tabs = [
-    { key: 'vitrina', label: 'Витрина', count: activeVitrinaCount },
-    { key: 'catalog', label: 'Каталог', count: activeCatalogCount }
+    { key: 'vitrina', label: 'Витрина', count: vitrinaCount },
+    { key: 'catalog', label: 'Каталог', count: catalogCount }
   ];
 
   const headerActions = (
     <>
-      <Button variant="ghost" size="sm" className="p-2" onClick={handleAddProduct}>
+      <Button variant="ghost" size="sm" className="p-2" onClick={onAddProduct}>
         <Plus className="w-5 h-5 text-gray-600" />
       </Button>
       <Button variant="ghost" size="sm" className="p-2">
@@ -283,7 +198,7 @@ export default function ProductsList() {
         <FilterTabs 
           tabs={tabs} 
           activeTab={filter} 
-          onTabChange={(tab) => setFilter(tab as any)} 
+          onTabChange={(tab) => handleFilterChange(tab as 'vitrina' | 'catalog')} 
         />
       </div>
 
@@ -293,19 +208,19 @@ export default function ProductsList() {
           filteredProducts.map((product) => (
             <ProductItem 
               key={product.id}
-              product={product}
-              onToggle={handleToggleProduct}
-              onView={handleViewProduct}
+              {...product}
+              onToggle={onToggleProduct}
+              onView={onViewProduct}
             />
           ))
         ) : (
           <EmptyState
             icon={<Plus className="w-8 h-8 text-gray-400" />}
-            title={filter === 'vitrina' ? 'Нет товаров в витрине' : 'Нет товаров'}
+            title={filter === 'vitrina' ? 'Нет товаров в витрине' : 'Нет товаров в каталоге'}
             description={
               filter === 'vitrina' 
                 ? 'Включите товары в витрину, чтобы они отображались покупателям'
-                : 'Добавьте свой первый товар, чтобы начать продавать'
+                : 'Добавьте товары в каталог, чтобы начать продавать'
             }
           />
         )}
