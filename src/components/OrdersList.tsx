@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, Package } from 'lucide-react';
 import { Button } from './ui/button';
 import { fetchOrders, changeOrderStatus, type FrontStatus, type Order } from '../api/orders';
 import { getTimeAgo } from '../utils/date';
+import { usePerformanceTracking } from '../utils/performance';
+import { useInView } from 'react-intersection-observer';
 
 // Status badge component matching original design
 function StatusBadge({ status, variant = 'default' }: { status: string; variant?: 'default' | 'success' | 'warning' | 'error' }) {
@@ -223,13 +225,19 @@ function OrderItem({
           {visibleImages.map((product, index) => (
             <div
               key={`${product.id}-${index}`}
-              className="w-12 h-12 rounded-full border-2 border-white bg-cover bg-center"
+              className="w-12 h-12 rounded-full border-2 border-white overflow-hidden"
               style={{ 
-                backgroundImage: `url('${product.image}')`,
                 marginLeft: index > 0 ? '-8px' : '0',
                 zIndex: visibleImages.length - index
               }}
-            />
+            >
+              <img
+                src={product.image}
+                alt="Товар"
+                loading="lazy"
+                className="w-full h-full object-cover"
+              />
+            </div>
           ))}
           {extraCount > 0 && (
             <div 
@@ -248,37 +256,95 @@ function OrderItem({
 type FilterType = 'all' | FrontStatus;
 
 export default function OrdersList() {
+  // Performance tracking
+  usePerformanceTracking('OrdersList');
+  
   const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [error, setError] = useState<string | null>(null);
+  
+  // Pagination state
+  const [currentOffset, setCurrentOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const PAGE_SIZE = 30;
 
-  // Load orders
-  useEffect(() => {
-    const loadOrders = async () => {
-      setIsLoading(true);
+  // Infinite scroll setup
+  const { ref: loadMoreRef, inView } = useInView({
+    threshold: 0,
+    rootMargin: '200px', // Start loading 200px before reaching the element
+  });
+
+  // Load orders (initial or reset)
+  const loadOrders = async (reset: boolean = true) => {
+    try {
+      if (reset) {
+        setIsLoading(true);
+        setCurrentOffset(0);
+      } else {
+        setIsLoadingMore(true);
+      }
       setError(null);
-      
-      try {
-        const params = activeFilter === 'all' ? {} : { status: activeFilter };
-        const result = await fetchOrders({ ...params, limit: 50 });
-        
-        if (result.success && result.data) {
+
+      const offset = reset ? 0 : currentOffset;
+      const params = activeFilter === 'all' ? {} : { status: activeFilter };
+      const result = await fetchOrders({ 
+        ...params, 
+        limit: PAGE_SIZE, 
+        offset: offset 
+      });
+
+      if (result.success && result.data) {
+        if (reset) {
           setOrders(result.data);
         } else {
-          setError('Не удалось загрузить заказы');
+          // Append new orders, avoid duplicates
+          setOrders(prev => {
+            const existingIds = new Set(prev.map(order => order.id));
+            const newOrders = result.data.filter(order => !existingIds.has(order.id));
+            return [...prev, ...newOrders];
+          });
         }
-      } catch (error) {
-        console.error('Failed to load orders:', error);
-        setError('Ошибка при загрузке заказов');
-      } finally {
-        setIsLoading(false);
+        
+        // Update pagination state
+        setHasMore(result.data.length === PAGE_SIZE);
+        if (!reset) {
+          setCurrentOffset(offset + PAGE_SIZE);
+        }
+      } else {
+        setError('Не удалось загрузить заказы');
+        setHasMore(false);
       }
-    };
-    
-    loadOrders();
+    } catch (error) {
+      console.error('Failed to load orders:', error);
+      setError('Ошибка при загрузке заказов');
+      setHasMore(false);
+    } finally {
+      setIsLoading(false);
+      setIsLoadingMore(false);
+    }
+  };
+
+  // Load more orders for infinite scroll
+  const loadMoreOrders = async () => {
+    if (isLoadingMore || !hasMore) return;
+    await loadOrders(false);
+  };
+
+  // Initial load and filter changes
+  useEffect(() => {
+    loadOrders(true);
   }, [activeFilter]);
+
+  // Infinite scroll effect
+  useEffect(() => {
+    if (inView && hasMore && !isLoadingMore) {
+      console.log('🔄 Infinite scroll triggered for orders');
+      loadMoreOrders();
+    }
+  }, [inView, hasMore, isLoadingMore]);
 
   const handleAddOrder = () => {
     navigate('/orders/add');
@@ -300,19 +366,22 @@ export default function OrdersList() {
     }
   };
 
-  // Filter out completed orders and apply status filter
-  const filteredOrders = activeFilter === 'all' 
-    ? orders.filter(order => order.status !== 'completed')
-    : orders.filter(order => order.status === activeFilter && order.status !== 'completed');
+  // Filter out completed orders and apply status filter (memoized)
+  const filteredOrders = useMemo(() => {
+    if (!orders || orders.length === 0) return [] as Order[];
+    return activeFilter === 'all'
+      ? orders.filter(order => order.status !== 'completed')
+      : orders.filter(order => order.status === activeFilter && order.status !== 'completed');
+  }, [orders, activeFilter]);
 
-  // Count orders by status for tabs (excluding completed)
-  const statusCounts = {
+  // Count orders by status for tabs (excluding completed) - memoized
+  const statusCounts = useMemo(() => ({
     all: orders.filter(o => o.status !== 'completed').length,
     new: orders.filter(o => o.status === 'new').length,
     paid: orders.filter(o => o.status === 'paid').length,
     accepted: orders.filter(o => o.status === 'accepted').length,
     assembled: orders.filter(o => o.status === 'assembled').length,
-  };
+  }), [orders]);
 
   const tabsWithCounts = FILTER_OPTIONS.map(tab => ({
     ...tab,
@@ -373,14 +442,40 @@ export default function OrdersList() {
       {/* Orders List */}
       <div className="pb-20">
         {filteredOrders.length > 0 ? (
-          filteredOrders.map((order) => (
-            <OrderItem 
-              key={order.id} 
-              order={order} 
-              onClick={handleViewOrder}
-              onStatusChange={handleStatusChange}
-            />
-          ))
+          <>
+            {filteredOrders.map((order) => (
+              <OrderItem 
+                key={order.id} 
+                order={order} 
+                onClick={handleViewOrder}
+                onStatusChange={handleStatusChange}
+              />
+            ))}
+            
+            {/* Infinite scroll trigger */}
+            {hasMore && (
+              <div 
+                ref={loadMoreRef}
+                className="h-16 flex items-center justify-center border-t border-gray-100"
+              >
+                {isLoadingMore && (
+                  <div className="flex items-center text-sm text-gray-600">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mr-2"></div>
+                    Загрузка заказов...
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Manual load more button (fallback) */}
+            {!hasMore && filteredOrders.length >= PAGE_SIZE && (
+              <div className="p-4 text-center border-t border-gray-100 bg-gray-50">
+                <p className="text-sm text-gray-600">
+                  Показано {filteredOrders.length} заказов
+                </p>
+              </div>
+            )}
+          </>
         ) : (
           <EmptyState
             icon={<Search className="w-8 h-8 text-gray-400" />}

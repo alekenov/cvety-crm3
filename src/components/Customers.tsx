@@ -4,6 +4,8 @@ import { Plus, Search, Calendar, Phone, TrendingUp } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { CustomerAPI, Customer } from "../services/customerApi";
+import { usePerformanceTracking } from "../utils/performance";
+import { useInView } from 'react-intersection-observer';
 // Temporary inline components to avoid import issues
 function StatusBadge({ status, variant = 'default' }: { status: string; variant?: 'default' | 'success' | 'warning' | 'error' }) {
   const variants = {
@@ -95,6 +97,7 @@ interface CustomerWithAvatar extends Customer {
 
 interface CustomerItemProps extends CustomerWithAvatar {
   onClick: (id: number) => void;
+  ordersLoadFailed?: boolean;
 }
 
 // Mock data removed - now using real API data
@@ -210,7 +213,7 @@ function formatCurrency(amount: number): string {
 
 
 
-function CustomerItem({ id, name, phone, memberSince, totalOrders, totalSpent, status, lastOrderDate, onClick }: CustomerItemProps) {
+function CustomerItem({ id, name, phone, memberSince, totalOrders, totalSpent, status, lastOrderDate, onClick, ordersLoadFailed }: CustomerItemProps) {
   
   const statusVariantMap = {
     active: 'success' as const,
@@ -250,12 +253,25 @@ function CustomerItem({ id, name, phone, memberSince, totalOrders, totalSpent, s
         </div>
         
         <div className="text-right flex-shrink-0">
-          <div className="text-sm text-gray-900 mb-1">
-            {totalOrders} {totalOrders === 1 ? 'заказ' : totalOrders < 5 ? 'заказа' : 'заказов'}
-          </div>
-          <div className="text-sm text-gray-600">
-            {formatCurrency(totalSpent)}
-          </div>
+          {ordersLoadFailed ? (
+            <>
+              <div className="text-sm text-gray-400 mb-1" title="Не удалось загрузить данные о заказах">
+                — заказов
+              </div>
+              <div className="text-sm text-gray-400">
+                —
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-sm text-gray-900 mb-1">
+                {totalOrders} {totalOrders === 1 ? 'заказ' : totalOrders < 5 ? 'заказа' : 'заказов'}
+              </div>
+              <div className="text-sm text-gray-600">
+                {formatCurrency(totalSpent)}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -270,34 +286,129 @@ interface CustomersProps {
 }
 
 export function Customers({ onNavigateBack, onViewCustomer, onAddCustomer, customers: propCustomers }: CustomersProps) {
+  // Performance tracking
+  usePerformanceTracking('Customers');
+  
   const navigate = useNavigate();
   const [customers, setCustomers] = useState<CustomerWithAvatar[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'active' | 'vip' | 'inactive'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [showAll, setShowAll] = useState(false);
+  const PAGE_SIZE = 20;
+
+  // Infinite scroll setup
+  const { ref: loadMoreRef, inView } = useInView({
+    threshold: 0,
+    rootMargin: '100px', // Start loading 100px before reaching the element
+  });
 
   // Load customers from API on component mount
   useEffect(() => {
-    loadCustomers();
+    loadCustomers(0, false); // Load first page
   }, []);
 
-  const loadCustomers = async () => {
+  // Infinite scroll effect
+  useEffect(() => {
+    if (inView && hasMore && !isLoadingMore && !showAll && !searchQuery) {
+      console.log('🔄 Infinite scroll triggered');
+      loadMoreCustomers();
+    }
+  }, [inView, hasMore, isLoadingMore, showAll, searchQuery]);
+
+  const loadCustomers = async (page: number = 0, append: boolean = false) => {
     try {
-      setIsLoading(true);
+      if (!append) {
+        setIsLoading(true);
+      } else {
+        setIsLoadingMore(true);
+      }
       setError(null);
-      const apiCustomers = await CustomerAPI.fetchCustomers(20, 0, true); // Fetch 20 customers with order data for testing
-      setCustomers(apiCustomers as CustomerWithAvatar[]);
+      
+      const limit = showAll ? 300 : PAGE_SIZE; 
+      const actualPage = page + 1; // API pages are 1-based
+
+      console.log(`🔄 Loading customers: page=${actualPage}, limit=${limit}, append=${append}`);
+
+      // 1) Try fast aggregated endpoint to avoid N+1
+      try {
+        const { customers: statsCustomers, pagination } = await CustomerAPI.getCustomersWithStats(actualPage, limit);
+
+        if (statsCustomers && statsCustomers.length > 0) {
+          console.log(`✅ Loaded ${statsCustomers.length} customers (aggregated)`);
+
+          if (append) {
+            setCustomers(prev => {
+              const existingIds = new Set(prev.map(c => c.id));
+              const newCustomers = statsCustomers.filter(c => !existingIds.has(c.id));
+              return [...prev, ...newCustomers];
+            });
+          } else {
+            setCustomers(statsCustomers as CustomerWithAvatar[]);
+          }
+
+          setHasMore(actualPage < (pagination.pages || 0) && !showAll);
+          if (append) setCurrentPage(page); else setCurrentPage(0);
+          return; // done
+        } else {
+          console.warn('⚠️ Aggregated endpoint returned empty result, falling back');
+        }
+      } catch (aggErr) {
+        console.warn('⚠️ Aggregated customers endpoint failed, falling back:', aggErr);
+      }
+
+      // 2) Fallback: list with order statistics (may be slower but shows real data)
+      const customerList = await CustomerAPI.fetchCustomers(limit, page * PAGE_SIZE, true);
+      console.log(`✅ Loaded ${customerList.length} customers (fallback, with order statistics)`);
+
+      if (append) {
+        setCustomers(prev => {
+          const existingIds = new Set(prev.map(c => c.id));
+          const newCustomers = customerList.filter(c => !existingIds.has(c.id));
+          return [...prev, ...newCustomers];
+        });
+      } else {
+        setCustomers(customerList as CustomerWithAvatar[]);
+      }
+
+      setHasMore(customerList.length === PAGE_SIZE && !showAll);
+      if (append) setCurrentPage(page); else setCurrentPage(0);
+
     } catch (err) {
       console.error('Failed to load customers:', err);
       setError('Не удалось загрузить список клиентов');
       // Fall back to prop customers if available
-      if (propCustomers && propCustomers.length > 0) {
+      if (propCustomers && propCustomers.length > 0 && !append) {
         setCustomers(propCustomers as CustomerWithAvatar[]);
       }
     } finally {
       setIsLoading(false);
+      setIsLoadingMore(false);
     }
+  };
+  
+  const loadMoreCustomers = async () => {
+    if (isLoadingMore || !hasMore) return;
+    const nextPage = currentPage + 1;
+    await loadCustomers(nextPage, true);
+  };
+  
+  const loadAllCustomers = async () => {
+    setShowAll(true);
+    setCurrentPage(0);
+    await loadCustomers(0, false); // Reload from start with higher limit
+  };
+  
+  const resetToPagedView = async () => {
+    setShowAll(false);
+    setCurrentPage(0);
+    await loadCustomers(0, false); // Reload first page only
   };
 
   // Фильтрация клиентов
@@ -386,13 +497,87 @@ export function Customers({ onNavigateBack, onViewCustomer, onAddCustomer, custo
       {/* Customers List */}
       <div className="pb-20">
         {filteredCustomers.length > 0 ? (
-          filteredCustomers.map((customer) => (
-            <CustomerItem
-              key={customer.id}
-              {...customer}
-              onClick={handleCustomerClick}
-            />
-          ))
+          <>
+            {filteredCustomers.map((customer) => (
+              <CustomerItem
+                key={customer.id}
+                {...customer}
+                onClick={handleCustomerClick}
+              />
+            ))}
+            
+            {/* Infinite Scroll Trigger & Manual Controls */}
+            {!searchQuery && (
+              <div>
+                {/* Infinite scroll trigger - invisible element */}
+                {!showAll && hasMore && (
+                  <div 
+                    ref={loadMoreRef}
+                    className="h-10 flex items-center justify-center"
+                  >
+                    {isLoadingMore && (
+                      <div className="flex items-center text-sm text-gray-600">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                        Загрузка клиентов...
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Manual controls section */}
+                <div className="p-4 border-t border-gray-100 bg-gray-50">
+                  <div className="text-center space-y-3">
+                    {/* Show current stats */}
+                    <p className="text-sm text-gray-600">
+                      Показано {filteredCustomers.length} из {showAll ? 'всех' : 'загруженных'} клиентов
+                    </p>
+                    
+                    {/* Manual action buttons */}
+                    <div className="flex flex-col gap-2">
+                      {!showAll && hasMore && (
+                        <Button 
+                          onClick={loadMoreCustomers}
+                          disabled={isLoadingMore}
+                          variant="outline"
+                          className="w-full"
+                        >
+                          {isLoadingMore ? (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>
+                              Загрузка...
+                            </>
+                          ) : (
+                            `Загрузить еще ${PAGE_SIZE} клиентов`
+                          )}
+                        </Button>
+                      )}
+                      
+                      {!showAll && (
+                        <Button 
+                          onClick={loadAllCustomers}
+                          variant="ghost"
+                          className="w-full text-blue-600 hover:text-blue-700"
+                          disabled={isLoadingMore}
+                        >
+                          Показать всех клиентов (может быть медленно)
+                        </Button>
+                      )}
+                      
+                      {showAll && (
+                        <Button 
+                          onClick={resetToPagedView}
+                          variant="ghost"
+                          className="w-full text-gray-600 hover:text-gray-700"
+                        >
+                          Вернуться к автозагрузке
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
         ) : (
           <EmptyState
             icon={<TrendingUp className="w-8 h-8 text-gray-400" />}

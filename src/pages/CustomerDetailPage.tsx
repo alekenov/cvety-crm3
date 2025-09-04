@@ -110,11 +110,10 @@ export default function CustomerDetailPage() {
       setIsLoading(true);
       setError(null);
       
-      // Load customer data and orders in parallel
-      const [customerData, ordersData] = await Promise.all([
-        CustomerAPI.fetchCustomerDetail(customerId),
-        CustomerAPI.fetchCustomerOrders(customerId, 50)
-      ]);
+      // Load customer data with orders from unified endpoint
+      const response = await CustomerAPI.fetchCustomerDetail(customerId);
+      const customerData = response;
+      const ordersData = response.orders || [];
       
       console.log(`📱 CustomerDetailPage: Received customer data:`, customerData);
       console.log(`📱 CustomerDetailPage: Received orders data:`, ordersData);

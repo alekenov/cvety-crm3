@@ -38,49 +38,17 @@ interface CustomerDetailProps {
   onViewOrder?: (orderId: string) => void;
 }
 
-// Мок-данные заказов для примера
-const mockOrders: Order[] = [
-  {
-    id: '1',
-    number: '40412',
-    date: new Date(2024, 7, 25),
-    total: 15000,
-    status: 'delivered',
-    items: [
-      { name: 'Букет роз', quantity: 1, price: 15000 }
-    ]
-  },
-  {
-    id: '2', 
-    number: '40401',
-    date: new Date(2024, 7, 18),
-    total: 8500,
-    status: 'delivered',
-    items: [
-      { name: 'Букет тюльпанов', quantity: 1, price: 8500 }
-    ]
-  },
-  {
-    id: '3',
-    number: '40395',
-    date: new Date(2024, 6, 10),
-    total: 22000,
-    status: 'delivered',
-    items: [
-      { name: 'Свадебный букет', quantity: 1, price: 22000 }
-    ]
-  },
-  {
-    id: '4',
-    number: '40387',
-    date: new Date(2024, 5, 20),
-    total: 12000,
-    status: 'cancelled',
-    items: [
-      { name: 'Композиция', quantity: 1, price: 12000 }
-    ]
-  }
-];
+// Функция преобразования ApiOrder в Order
+function convertApiOrderToOrder(apiOrder: ApiOrder): Order {
+  return {
+    id: String(apiOrder.id || ''),
+    number: apiOrder.number || String(apiOrder.id || ''),
+    date: new Date(apiOrder.date || new Date()),
+    total: apiOrder.total || 0,
+    status: apiOrder.status || 'pending',
+    items: apiOrder.items || []
+  };
+}
 
 function formatDate(date: Date): string {
   const now = new Date();
@@ -153,31 +121,8 @@ export function CustomerDetail({ customerId, customers, orders, onClose, onUpdat
     cancelled: { label: 'Отменен', color: 'bg-red-100 text-red-700' }
   };
 
-  // Transform real API orders to display format
-  const customerOrders = (orders || []).map(apiOrder => {
-    // Parse date safely - API might return invalid date format
-    let orderDate: Date;
-    try {
-      orderDate = new Date(apiOrder.DATE_INSERT.value);
-      // If date is invalid, use current date as fallback
-      if (isNaN(orderDate.getTime())) {
-        orderDate = new Date();
-      }
-    } catch {
-      orderDate = new Date();
-    }
-
-    return {
-      id: apiOrder.ID.toString(),
-      number: apiOrder.ID.toString(), // Use order ID as number for now  
-      date: orderDate,
-      total: Number(apiOrder.PRICE),
-      status: 'delivered' as const, // Default status, can be enhanced later
-      items: [
-        { name: `Заказ #${apiOrder.ID}`, quantity: 1, price: Number(apiOrder.PRICE) }
-      ]
-    };
-  });
+  // Use real API orders if available, otherwise use empty array  
+  const customerOrders = orders ? orders.map(convertApiOrderToOrder) : [];
 
   const handleSaveNotes = () => {
     const updatedCustomer = { ...customer, notes };
@@ -245,7 +190,7 @@ export function CustomerDetail({ customerId, customers, orders, onClose, onUpdat
             </div>
             <div className="text-center">
               <div className="text-gray-900">
-                {Math.round(customer.totalSpent / customer.totalOrders)}₸
+                {customer.totalOrders > 0 ? Math.round(customer.totalSpent / customer.totalOrders) : 0}₸
               </div>
               <div className="text-sm text-gray-500">средний чек</div>
             </div>
