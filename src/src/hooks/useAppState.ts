@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Product, Customer, Order, Screen } from '../types';
+import { Product, Customer, Order, Screen, InventoryItem } from '../types';
 import { fetchProducts as fetchProductsAPI } from '../../api/products';
 import type { ProductDTO } from '../../api/products';
+import { fetchInventoryItems, categorizeInventoryItem, formatInventoryPrice } from '../../api/inventory';
+import type { InventoryItemDTO } from '../../api/inventory';
 
 export function useAppState() {
   // Screen navigation state with history tracking
@@ -52,6 +54,16 @@ export function useAppState() {
 
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
+
+  // Inventory state
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [isLoadingInventory, setIsLoadingInventory] = useState(true);
+  const [inventoryPagination, setInventoryPagination] = useState({
+    total: 0,
+    limit: 20,
+    offset: 0,
+    hasMore: false
+  });
 
   // Convert ProductDTO to Product type
   const convertDTOToProduct = (dto: ProductDTO): Product => {
@@ -104,6 +116,72 @@ export function useAppState() {
     };
   };
 
+  // Convert InventoryItemDTO to InventoryItem type
+  const convertDTOToInventoryItem = (dto: InventoryItemDTO): InventoryItem => {
+    const category = categorizeInventoryItem(dto);
+    const unit = dto.service ? 'услуга' : 'шт'; // Default unit, can be enhanced based on item type
+    const price = formatInventoryPrice(dto.cost);
+    
+    return {
+      id: dto.id,
+      name: dto.name,
+      category,
+      cost: dto.cost,
+      quantity: dto.quantity,
+      markup: dto.markup,
+      location: dto.location,
+      image: dto.image,
+      images: dto.images,
+      service: dto.service,
+      flower: dto.flower,
+      deactivate: dto.deactivate,
+      unit,
+      price,
+      lastDelivery: undefined // API doesn't provide this, could be enhanced later
+    };
+  };
+
+  // Load inventory items function
+  const loadInventoryItems = async (params: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    flower?: string;
+    service?: boolean;
+  } = {}) => {
+    setIsLoadingInventory(true);
+    try {
+      const result = await fetchInventoryItems({
+        limit: params.limit || 20,
+        offset: params.offset || 0,
+        search: params.search,
+        flower: params.flower,
+        service: params.service
+      });
+
+      if (result.success) {
+        const convertedItems = result.data.map(convertDTOToInventoryItem);
+        
+        if (params.offset === 0) {
+          // Replace items for new search/filter
+          setInventoryItems(convertedItems);
+        } else {
+          // Append items for pagination
+          setInventoryItems(prev => [...prev, ...convertedItems]);
+        }
+        
+        setInventoryPagination(result.pagination);
+      }
+    } catch (error) {
+      console.error('Failed to load inventory items:', error);
+      if (params.offset === 0) {
+        setInventoryItems([]);
+      }
+    } finally {
+      setIsLoadingInventory(false);
+    }
+  };
+
   // Load products from API on mount
   useEffect(() => {
     const loadProducts = async () => {
@@ -139,6 +217,11 @@ export function useAppState() {
     loadProducts();
   }, []);
 
+  // Load inventory items on mount
+  useEffect(() => {
+    loadInventoryItems();
+  }, []);
+
   const [orders, setOrders] = useState<Order[]>([]);
 
   return {
@@ -153,7 +236,10 @@ export function useAppState() {
     customers,
     products,
     orders,
+    inventoryItems,
+    inventoryPagination,
     isLoadingProducts,
+    isLoadingInventory,
     
     // Enhanced Navigation
     navigateToScreen,
@@ -161,6 +247,9 @@ export function useAppState() {
     
     // Tab management
     setActiveTab,
+    
+    // Inventory management
+    loadInventoryItems,
     
     // Legacy setters (kept for compatibility)
     setCurrentScreen,
@@ -170,6 +259,7 @@ export function useAppState() {
     setSelectedCustomerId,
     setCustomers,
     setProducts,
-    setOrders
+    setOrders,
+    setInventoryItems
   };
 }

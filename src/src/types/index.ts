@@ -91,11 +91,19 @@ export interface InventoryItem {
   id: number;
   name: string;
   category: 'flowers' | 'greenery' | 'accessories';
-  price: string;
-  unit: string;
+  cost: number;
   quantity: number;
-  lastDelivery: Date;
-  image: string;
+  markup: number;
+  location: string;
+  image: string | null;
+  images: string[] | null;
+  service: boolean;
+  flower: string;
+  deactivate: boolean;
+  // Computed fields
+  unit: string;
+  price: string;
+  lastDelivery?: Date;
 }
 
 // Component prop types
