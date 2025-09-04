@@ -191,34 +191,10 @@ function transformLegacyOrderFromAPI(order: any): Order {
 }
 
 export async function fetchOrderDetail(id: string|number) {
-  // First try new API
-  const response = await api('/api/v2/orders/detail', { query: { id } });
+  // Use the enhanced detail endpoint
+  const response = await api('/api/v2/orders/detail/', { query: { id } });
   
   if (response && typeof response === 'object' && 'success' in response && 'data' in response) {
-    // If new API returns empty data, try old API
-    // Check for empty recipient data or zero payment amount as indicators of incomplete data
-    if (!response.data?.recipient?.name || response.data?.payment?.amount === '0 ₸') {
-      // Try old API
-      const oldResponse = await api('/api/v2/order/order-list', { query: { order_id: id } });
-      if (oldResponse?.status === true && oldResponse.data?.orders) {
-        // Find the specific order by ID in the array
-        const targetOrder = oldResponse.data.orders.find((order: any) => String(order.id) === String(id));
-        if (targetOrder) {
-          return {
-            success: true,
-            data: transformLegacyOrderFromAPI(targetOrder)
-          };
-        }
-        // Fallback to first order if not found (backward compatibility)
-        if (oldResponse.data.orders[0]) {
-          return {
-            success: true,
-            data: transformLegacyOrderFromAPI(oldResponse.data.orders[0])
-          };
-        }
-      }
-    }
-    
     return {
       success: response.success,
       data: transformOrderFromAPI(response.data)
