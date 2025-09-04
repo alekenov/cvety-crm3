@@ -23,7 +23,7 @@ const InventoryAudit = lazy(() => import('../components/stubs/StubComponents').t
 const Customers = lazy(() => import('../components/stubs/StubComponents').then(m => ({ default: m.Customers })));
 const CustomerDetail = lazy(() => import('../components/stubs/StubComponents').then(m => ({ default: m.CustomerDetail })));
 const AddCustomer = lazy(() => import('../components/stubs/StubComponents').then(m => ({ default: m.AddCustomer })));
-const Profile = lazy(() => import('../components/stubs/StubComponents').then(m => ({ default: m.Profile })));
+const Profile = lazy(() => import('../components/Profile'));
 const Dashboard = lazy(() => import('../components/stubs/StubComponents').then(m => ({ default: m.Dashboard })));
 
 // Loading component

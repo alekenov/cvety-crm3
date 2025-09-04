@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Plus, Search } from "lucide-react";
 import { Button } from "./components/ui/button";
 import { Switch } from "./components/ui/switch";
+import { useLocation, useNavigate } from "react-router-dom";
 
 // Centralized imports
 import { Screen } from "./src/types";
@@ -150,9 +151,11 @@ import ProductsListWrapper from "./components/ProductsListWrapper";
 export default function App() {
   // Use centralized state and actions
   const state = useAppContext();
+  const location = useLocation();
+  const navigate = useNavigate();
   
   // Get current path to determine which tab should be active
-  const currentPath = window.location.pathname;
+  const currentPath = location.pathname;
   const isCustomersPage = currentPath === '/customers';
   
   // Set active tab based on current path

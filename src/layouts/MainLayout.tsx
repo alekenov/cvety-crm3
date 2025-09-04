@@ -1,6 +1,8 @@
 import React from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Package, ShoppingCart, Warehouse, Users, User, BarChart } from 'lucide-react';
+import { PerformanceMonitor, usePerformanceMonitor } from '../components/PerformanceMonitor';
+import { usePerformanceTracking } from '../utils/performance';
 
 interface TabItem {
   key: string;
@@ -12,6 +14,10 @@ interface TabItem {
 export default function MainLayout() {
   const location = useLocation();
   const navigate = useNavigate();
+  
+  // Performance tracking
+  usePerformanceTracking('MainLayout');
+  const { isVisible, toggle } = usePerformanceMonitor();
 
   const tabs: TabItem[] = [
     {
@@ -101,6 +107,9 @@ export default function MainLayout() {
           <BarChart className="w-6 h-6" />
         </button>
       </div>
+
+      {/* Performance Monitor - Only in development */}
+      <PerformanceMonitor isVisible={isVisible} onToggle={toggle} />
     </div>
   );
 }

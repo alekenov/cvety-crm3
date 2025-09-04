@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Package, ClipboardList, Warehouse, Users, User } from "lucide-react";
+import { useNavigate, useLocation } from "react-router-dom";
 
 interface Product {
   id: number;
@@ -78,6 +79,20 @@ export function MainTabView({
   CustomersComponent,
   ProfileComponent
 }: MainTabViewProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const handleTabChange = (tab: 'orders' | 'products' | 'inventory' | 'customers' | 'profile') => {
+    onActiveTabChange(tab);
+    const routes = {
+      'orders': '/orders',
+      'products': '/',
+      'inventory': '/inventory', 
+      'customers': '/customers',
+      'profile': '/profile'
+    };
+    navigate(routes[tab]);
+  };
 
   return (
     <div className="bg-gray-50 min-h-screen">
@@ -114,7 +129,7 @@ export function MainTabView({
         <div className="fixed bottom-0 left-1/2 transform -translate-x-1/2 w-full max-w-md bg-white border-t border-gray-200 z-50">
           <div className="flex">
             <button
-              onClick={() => onActiveTabChange('orders')}
+              onClick={() => handleTabChange('orders')}
               className={`flex-1 py-2 flex flex-col items-center justify-center transition-colors ${
                 activeTab === 'orders'
                   ? 'text-gray-900 bg-gray-100'
@@ -125,7 +140,7 @@ export function MainTabView({
               <span className="text-xs">Заказы</span>
             </button>
             <button
-              onClick={() => onActiveTabChange('products')}
+              onClick={() => handleTabChange('products')}
               className={`flex-1 py-2 flex flex-col items-center justify-center transition-colors ${
                 activeTab === 'products'
                   ? 'text-gray-900 bg-gray-100'
@@ -136,7 +151,7 @@ export function MainTabView({
               <span className="text-xs">Товары</span>
             </button>
             <button
-              onClick={() => onActiveTabChange('inventory')}
+              onClick={() => handleTabChange('inventory')}
               className={`flex-1 py-2 flex flex-col items-center justify-center transition-colors ${
                 activeTab === 'inventory'
                   ? 'text-gray-900 bg-gray-100'
@@ -147,7 +162,7 @@ export function MainTabView({
               <span className="text-xs">Склад</span>
             </button>
             <button
-              onClick={() => onActiveTabChange('customers')}
+              onClick={() => handleTabChange('customers')}
               className={`flex-1 py-2 flex flex-col items-center justify-center transition-colors ${
                 activeTab === 'customers'
                   ? 'text-gray-900 bg-gray-100'
@@ -158,7 +173,7 @@ export function MainTabView({
               <span className="text-xs">Клиенты</span>
             </button>
             <button
-              onClick={() => onActiveTabChange('profile')}
+              onClick={() => handleTabChange('profile')}
               className={`flex-1 py-2 flex flex-col items-center justify-center transition-colors ${
                 activeTab === 'profile'
                   ? 'text-gray-900 bg-gray-100'
