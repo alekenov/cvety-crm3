@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test API Parameters</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        .result { background: #f0f0f0; padding: 10px; margin: 10px 0; }
+        button { margin: 5px; padding: 5px 10px; }
+    </style>
+</head>
+<body>
+    <h1>Testing Product List API Parameters</h1>
+    
+    <button onclick="testAPI('default')">Default (no active param)</button>
+    <button onclick="testAPI('all')">active: 'all'</button>
+    <button onclick="testAPI('false')">active: false</button>
+    <button onclick="testAPI('0')">active: 0</button>
+    <button onclick="testAPI('both')">active: 'both'</button>
+    <button onclick="testAPI('any')">active: 'any'</button>
+    <button onclick="testAPI('inactive')">active: 'inactive'</button>
+    <button onclick="testWithoutShopFilter()">Without shop_id filter</button>
+    
+    <div id="results"></div>
+    
+    <script>
+        const token = '76e6e073-2c16-44a4-8173-9cd9ffc09c9f';
+        
+        async function testAPI(activeParam) {
+            const resultsDiv = document.getElementById('results');
+            
+            // Use proxy endpoint
+            let url = `/api/api/v2/product/list/?type=catalog&limit=100&shop_id=17008&access_token=${token}`;
+            
+            if (activeParam === 'all') {
+                url += '&active=all';
+            } else if (activeParam === 'false') {
+                url += '&active=false';
+            } else if (activeParam === '0') {
+                url += '&active=0';
+            } else if (activeParam === 'both') {
+                url += '&active=both';
+            } else if (activeParam === 'any') {
+                url += '&active=any';
+            } else if (activeParam === 'inactive') {
+                url += '&active=inactive';
+            }
+            // default - no parameter
+            
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (data.status && data.data?.items) {
+                    const items = data.data.items;
+                    
+                    // Analyze the results
+                    const activeCount = items.filter(item => item.active === true || item.active === 1).length;
+                    const inactiveCount = items.filter(item => item.active === false || item.active === 0).length;
+                    const undefinedCount = items.filter(item => item.active === undefined || item.active === null).length;
+                    
+                    // Sample of different status items
+                    const activeItem = items.find(item => item.active === true || item.active === 1);
+                    const inactiveItem = items.find(item => item.active === false || item.active === 0);
+                    
+                    const result = {
+                        param: activeParam,
+                        totalItems: items.length,
+                        activeCount: activeCount,
+                        inactiveCount: inactiveCount,
+                        undefinedCount: undefinedCount,
+                        sampleActive: activeItem ? { name: activeItem.name, active: activeItem.active } : null,
+                        sampleInactive: inactiveItem ? { name: inactiveItem.name, active: inactiveItem.active } : null,
+                        uniqueActiveValues: [...new Set(items.map(item => item.active))]
+                    };
+                    
+                    const div = document.createElement('div');
+                    div.className = 'result';
+                    div.innerHTML = `
+                        <strong>Test: ${activeParam}</strong><br>
+                        <pre>${JSON.stringify(result, null, 2)}</pre>
+                    `;
+                    resultsDiv.insertBefore(div, resultsDiv.firstChild);
+                } else {
+                    const div = document.createElement('div');
+                    div.className = 'result';
+                    div.innerHTML = `<strong>Test: ${activeParam}</strong><br>Error: ${JSON.stringify(data)}`;
+                    resultsDiv.insertBefore(div, resultsDiv.firstChild);
+                }
+            } catch (error) {
+                const div = document.createElement('div');
+                div.className = 'result';
+                div.innerHTML = `<strong>Test: ${activeParam}</strong><br>Error: ${error.message}`;
+                resultsDiv.insertBefore(div, resultsDiv.firstChild);
+            }
+        }
+        
+        async function testWithoutShopFilter() {
+            const resultsDiv = document.getElementById('results');
+            
+            // Test without shop_id to see all products
+            const url = `/api/api/v2/product/list/?type=catalog&limit=200&access_token=${token}`;
+            
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (data.status && data.data?.items) {
+                    const items = data.data.items;
+                    
+                    // Group by shop_id and active status
+                    const shopGroups = {};
+                    items.forEach(item => {
+                        const shopId = item.shopId || 'unknown';
+                        if (!shopGroups[shopId]) {
+                            shopGroups[shopId] = { active: 0, inactive: 0, total: 0 };
+                        }
+                        shopGroups[shopId].total++;
+                        if (item.active) {
+                            shopGroups[shopId].active++;
+                        } else {
+                            shopGroups[shopId].inactive++;
+                        }
+                    });
+                    
+                    const result = {
+                        testType: 'Without shop_id filter',
+                        totalItems: items.length,
+                        shopGroups: shopGroups,
+                        uniqueActiveValues: [...new Set(items.map(item => item.active))]
+                    };
+                    
+                    const div = document.createElement('div');
+                    div.className = 'result';
+                    div.innerHTML = `
+                        <strong>Test: Without shop_id filter</strong><br>
+                        <pre>${JSON.stringify(result, null, 2)}</pre>
+                    `;
+                    resultsDiv.insertBefore(div, resultsDiv.firstChild);
+                }
+            } catch (error) {
+                const div = document.createElement('div');
+                div.className = 'result';
+                div.innerHTML = `<strong>Test: Without shop_id filter</strong><br>Error: ${error.message}`;
+                resultsDiv.insertBefore(div, resultsDiv.firstChild);
+            }
+        }
+        
+        // Test default on load
+        testAPI('default');
+    </script>
+</body>
+</html>

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test API is_ready field</title>
+</head>
+<body>
+    <h1>Testing is_ready field in API</h1>
+    <pre id="result"></pre>
+    
+    <script>
+        async function testAPI() {
+            const token = '76e6e073-2c16-44a4-8173-9cd9ffc09c9f';
+            const url = `https://cvety.kz/api/v2/product/list/?type=catalog&limit=100&shop_id=17008&access_token=${token}`;
+            
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (data.status && data.data?.items) {
+                    // Find all products with "Собранный букет" in the name
+                    const assembledBouquets = data.data.items.filter(item => 
+                        item.name && item.name.includes('Собранный букет')
+                    );
+                    
+                    // Check for is_ready field
+                    const withIsReady = data.data.items.filter(item => 
+                        item.is_ready === true || item.is_ready === 1
+                    );
+                    
+                    const result = {
+                        totalItems: data.data.items.length,
+                        assembledBouquetsCount: assembledBouquets.length,
+                        itemsWithIsReady: withIsReady.length,
+                        assembledBouquetsDetails: assembledBouquets.map(item => ({
+                            id: item.id,
+                            name: item.name,
+                            is_ready: item.is_ready,
+                            shopId: item.shopId,
+                            active: item.active
+                        })),
+                        firstFewItems: data.data.items.slice(0, 5).map(item => ({
+                            name: item.name,
+                            is_ready: item.is_ready
+                        }))
+                    };
+                    
+                    document.getElementById('result').textContent = JSON.stringify(result, null, 2);
+                } else {
+                    document.getElementById('result').textContent = 'Error: ' + JSON.stringify(data);
+                }
+            } catch (error) {
+                document.getElementById('result').textContent = 'Error: ' + error.message;
+            }
+        }
+        
+        testAPI();
+    </script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Shop Filtering</title>
+</head>
+<body>
+    <h1>Testing Shop ID Filtering</h1>
+    <button onclick="testFiltering()">Test API Filtering</button>
+    <pre id="result"></pre>
+    
+    <script>
+    async function testFiltering() {
+        const token = 'ABE7142D-D8AB-76AF-8D6C-2C4FAEA9B144';
+        const result = document.getElementById('result');
+        
+        // Test catalog products with shop_id filter
+        const response = await fetch(`http://localhost:3003/api/v2/products?type=catalog&limit=100&shop_id=17008&access_token=${token}`);
+        const data = await response.json();
+        
+        if (data.success && data.data) {
+            const products = data.data;
+            
+            // Check for products from wrong shop
+            const wrongShop = products.filter(p => p.shopId && p.shopId !== 17008);
+            const shop17008 = products.filter(p => !p.shopId || p.shopId === 17008);
+            
+            result.textContent = `
+Total products returned: ${products.length}
+Products from shop 17008: ${shop17008.length}  
+Products from wrong shop: ${wrongShop.length}
+
+Wrong shop products:
+${wrongShop.slice(0, 5).map(p => `  - ${p.title} (shopId: ${p.shopId})`).join('\n')}
+
+Correct shop products (first 5):
+${shop17008.slice(0, 5).map(p => `  - ${p.title} (shopId: ${p.shopId || 'N/A'})`).join('\n')}
+            `;
+        } else {
+            result.textContent = 'Failed to fetch products';
+        }
+    }
+    </script>
+</body>
+</html>
