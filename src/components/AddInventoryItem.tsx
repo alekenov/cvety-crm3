@@ -1,18 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
-
-interface InventoryItem {
-  id: number;
-  name: string;
-  category: 'flowers' | 'greenery' | 'accessories';
-  price: number;
-  unit: string;
-  quantity: number;
-  image: string;
-}
+import { useAppContext } from "../src/contexts/AppContext";
+import { searchInventoryItems } from "../api/inventory";
+import type { InventoryItem } from "../src/types";
 
 interface SupplyItem {
   id: string;
@@ -29,74 +22,9 @@ interface AddInventoryItemProps {
   onProcessSupply?: (items: SupplyItem[]) => void;
 }
 
-// Мок данные существующих товаров на складе
-const existingItems: InventoryItem[] = [
-  {
-    id: 1,
-    name: "Розы красные",
-    category: 'flowers',
-    price: 350,
-    unit: "шт",
-    quantity: 85,
-    image: "https://images.unsplash.com/photo-1518895949257-7621c3c786d7?w=100&h=100&fit=crop"
-  },
-  {
-    id: 2,
-    name: "Тюльпаны белые",
-    category: 'flowers',
-    price: 250,
-    unit: "шт",
-    quantity: 12,
-    image: "https://images.unsplash.com/photo-1582794543139-8ac9cb0f7b11?w=100&h=100&fit=crop"
-  },
-  {
-    id: 3,
-    name: "Лилии розовые",
-    category: 'flowers',
-    price: 520,
-    unit: "шт",
-    quantity: 24,
-    image: "https://images.unsplash.com/photo-1565011523534-747a8601f1a4?w=100&h=100&fit=crop"
-  },
-  {
-    id: 4,
-    name: "Эвкалипт",
-    category: 'greenery',
-    price: 120,
-    unit: "ветка",
-    quantity: 45,
-    image: "https://images.unsplash.com/photo-1586744687037-b4f9c5d1fcd8?w=100&h=100&fit=crop"
-  },
-  {
-    id: 5,
-    name: "Хризантемы желтые",
-    category: 'flowers',
-    price: 180,
-    unit: "шт",
-    quantity: 8,
-    image: "https://images.unsplash.com/photo-1572731973537-34afe46c4bc6?w=100&h=100&fit=crop"
-  },
-  {
-    id: 6,
-    name: "Лента атласная",
-    category: 'accessories',
-    price: 15,
-    unit: "метр",
-    quantity: 150,
-    image: "https://images.unsplash.com/photo-1513475382585-d06e58bcb0e0?w=100&h=100&fit=crop"
-  },
-  {
-    id: 7,
-    name: "Гипсофила",
-    category: 'flowers',
-    price: 80,
-    unit: "ветка",
-    quantity: 3,
-    image: "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=100&h=100&fit=crop"
-  }
-];
 
 export function AddInventoryItem({ onClose, onProcessSupply }: AddInventoryItemProps) {
+  const { loadInventoryItems } = useAppContext();
   const [supplyItems, setSupplyItems] = useState<SupplyItem[]>([
     {
       id: '1',
@@ -109,29 +37,69 @@ export function AddInventoryItem({ onClose, onProcessSupply }: AddInventoryItemP
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Поиск подсказок при вводе названия
-  const searchSuggestions = (query: string): InventoryItem[] => {
+  // Поиск подсказок при вводе названия с использованием API
+  const searchSuggestions = useCallback(async (query: string): Promise<InventoryItem[]> => {
     if (query.trim().length <= 1) return [];
-    return existingItems.filter(item =>
-      item.name.toLowerCase().includes(query.toLowerCase())
-    );
-  };
+    try {
+      const results = await searchInventoryItems(query, 5);
+      return results;
+    } catch (error) {
+      console.error('Error searching inventory:', error);
+      return [];
+    }
+  }, []);
+
+  // Debounced search function
+  const debouncedSearch = useCallback(
+    debounce(async (id: string, query: string) => {
+      if (query.trim().length > 1) {
+        const suggestions = await searchSuggestions(query);
+        setSupplyItems(prev => prev.map(item => {
+          if (item.id !== id) return item;
+          // Only update if the name hasn't changed since we started the search
+          if (item.name === query) {
+            return {
+              ...item,
+              suggestions,
+              showSuggestions: suggestions.length > 0
+            };
+          }
+          return item;
+        }));
+      }
+    }, 300),
+    [searchSuggestions]
+  );
 
   const handleNameChange = (id: string, value: string) => {
+    // Immediately update the input value
     setSupplyItems(prev => prev.map(item => {
       if (item.id !== id) return item;
-      
-      const suggestions = searchSuggestions(value);
       return {
         ...item,
         name: value,
-        suggestions,
-        showSuggestions: suggestions.length > 0,
+        suggestions: [],
+        showSuggestions: false,
         // Сбрасываем existingItem если изменили название
         existingItem: item.existingItem && value !== item.existingItem.name ? undefined : item.existingItem
       };
     }));
+
+    // Then search for suggestions with debounce
+    debouncedSearch(id, value);
   };
+
+  // Simple debounce implementation
+  function debounce<T extends (...args: any[]) => any>(
+    func: T,
+    wait: number
+  ): (...args: Parameters<T>) => void {
+    let timeout: NodeJS.Timeout;
+    return (...args: Parameters<T>) => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => func(...args), wait);
+    };
+  }
 
   const handleSelectSuggestion = (itemId: string, suggestion: InventoryItem) => {
     setSupplyItems(prev => prev.map(item => {
@@ -140,7 +108,7 @@ export function AddInventoryItem({ onClose, onProcessSupply }: AddInventoryItemP
       return {
         ...item,
         name: suggestion.name,
-        price: suggestion.price.toString(),
+        price: suggestion.cost.toString(),
         suggestions: [],
         showSuggestions: false,
         existingItem: suggestion
@@ -207,6 +175,9 @@ export function AddInventoryItem({ onClose, onProcessSupply }: AddInventoryItemP
           wasFromSuggestion: !!item.existingItem
         });
       });
+
+      // Reload inventory data to show new items
+      await loadInventoryItems({ offset: 0 });
 
       // Закрытие через небольшую задержку
       setTimeout(() => {
@@ -290,14 +261,14 @@ export function AddInventoryItem({ onClose, onProcessSupply }: AddInventoryItemP
                           <div className="flex items-center space-x-2">
                             <div 
                               className="w-5 h-5 bg-cover bg-center rounded-full flex-shrink-0"
-                              style={{ backgroundImage: `url('${suggestion.image}')` }}
+                              style={{ backgroundImage: `url('${suggestion.image || "https://images.unsplash.com/photo-1518895949257-7621c3c786d7?w=100&h=100&fit=crop"}')` }}
                             />
                             <div className="flex-1 min-w-0">
                               <div className="text-sm font-medium text-gray-900 truncate">
                                 {suggestion.name}
                               </div>
                               <div className="text-xs text-gray-500">
-                                {suggestion.price} ₸ • справочная цена
+                                {suggestion.cost} ₸ • остаток: {suggestion.quantity} {suggestion.unit}
                               </div>
                             </div>
                           </div>
