@@ -13,14 +13,26 @@ export interface ApiCustomer {
   EMAIL?: string;
   PERSONAL_PHONE?: string;
   PERSONAL_CITY?: string;
-  DATE_REGISTER?: {
-    value: string;
-    text: string;
-  };
+  // На части эндпоинтов DATE_REGISTER — строка, на части — объект
+  DATE_REGISTER?:
+    | string
+    | {
+        value: string;
+        text: string;
+      };
   ACTIVE?: 'Y' | 'N';
   PERSONAL_NOTES?: string;
   PERSONAL_ZIP?: string;
   PERSONAL_STREET?: string;
+
+  // Доп. статистические поля, которые уже приходят в /api/v2/customers/
+  total_orders?: number;
+  completed_orders?: number;
+  pending_orders?: number;
+  total_spent?: number;
+  average_order_value?: number;
+  last_order_date?: string;
+  status?: 'active' | 'vip' | 'inactive';
 }
 
 export interface ApiOrder {
@@ -163,18 +175,35 @@ function determineCustomerStatus(totalOrders: number, totalSpent: number, lastOr
 
 // Transform API customer to frontend format
 function transformCustomer(apiCustomer: ApiCustomer, orders?: ApiOrder[]): Customer {
-  const totalOrders = orders?.length || 0;
-  const totalSpent = orders?.reduce((sum, order) => {
-    return sum + (Number(order.PRICE) || 0);
-  }, 0) || 0;
-  
-  // Get last order date
+  // Если уже пришли агрегированные поля — используем их, чтобы не делать N+1
+  let totalOrders = 0;
+  let totalSpent = 0;
   let lastOrderDate: Date | undefined;
-  if (orders && orders.length > 0) {
-    const sortedOrders = [...orders].sort((a, b) => 
-      new Date(b.DATE_INSERT.value).getTime() - new Date(a.DATE_INSERT.value).getTime()
-    );
-    lastOrderDate = new Date(sortedOrders[0].DATE_INSERT.value);
+
+  if (!orders && (apiCustomer.total_orders !== undefined || apiCustomer.total_spent !== undefined)) {
+    totalOrders = apiCustomer.total_orders || 0;
+    totalSpent = apiCustomer.total_spent || 0;
+    if (apiCustomer.last_order_date) {
+      const d = new Date(apiCustomer.last_order_date);
+      if (!isNaN(d.getTime())) lastOrderDate = d;
+    }
+  } else if (orders) {
+    // Старый путь расчёта по списку заказов
+    totalOrders = orders.length;
+    totalSpent =
+      orders.reduce((sum, order: any) => {
+        // Поддержка разных форматов полей в заказах (PRICE/total)
+        const price = Number(order.PRICE ?? order.total ?? 0);
+        return sum + (isNaN(price) ? 0 : price);
+      }, 0) || 0;
+
+    if (orders.length > 0) {
+      // Поддержка разных форматов дат (DATE_INSERT.value / date)
+      const toDate = (o: any) => new Date(o?.DATE_INSERT?.value ?? o?.date ?? 0);
+      const sorted = [...orders].sort((a: any, b: any) => toDate(b).getTime() - toDate(a).getTime());
+      const ld = toDate(sorted[0]);
+      if (!isNaN(ld.getTime())) lastOrderDate = ld;
+    }
   }
 
   // Construct display name with better fallback
@@ -206,8 +235,10 @@ function transformCustomer(apiCustomer: ApiCustomer, orders?: ApiOrder[]): Custo
 
   // Handle memberSince date parsing
   let memberSince: Date;
-  if (apiCustomer.DATE_REGISTER?.value) {
-    memberSince = new Date(apiCustomer.DATE_REGISTER.value);
+  if (apiCustomer.DATE_REGISTER) {
+    const raw = typeof apiCustomer.DATE_REGISTER === 'string' ? apiCustomer.DATE_REGISTER : apiCustomer.DATE_REGISTER.value;
+    const d = new Date(raw);
+    memberSince = !isNaN(d.getTime()) ? d : new Date();
   } else {
     memberSince = new Date();
   }
@@ -221,7 +252,7 @@ function transformCustomer(apiCustomer: ApiCustomer, orders?: ApiOrder[]): Custo
     totalOrders,
     totalSpent,
     lastOrderDate,
-    status: determineCustomerStatus(totalOrders, totalSpent, lastOrderDate),
+    status: apiCustomer.status ?? determineCustomerStatus(totalOrders, totalSpent, lastOrderDate),
     notes: apiCustomer.PERSONAL_NOTES,
     address: apiCustomer.PERSONAL_STREET
   };

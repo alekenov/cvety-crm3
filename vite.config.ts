@@ -62,33 +62,16 @@
       port: 3008,
       open: true,
       proxy: {
-        '^/api/v2/customers/with-stats': {
-          target: 'http://localhost:8090',
-          changeOrigin: true,
-          secure: false,
-          configure: (proxy) => {
-            proxy.on('proxyReq', (proxyReq, req, res) => {
-              console.log('🔧 Proxying customers/with-stats:', req.method, req.url);
-              proxyReq.setHeader('X-User-Id', '1'); // Add dev auth header
-            });
-          }
-        },
-        '^/api/v2/customers/\\d+': {
+        '/api': {
           target: 'https://cvety.kz',
           changeOrigin: true,
           secure: true,
           followRedirects: true,
           configure: (proxy) => {
             proxy.on('proxyReq', (proxyReq, req, res) => {
-              console.log('🔧 Proxying customer detail to production:', req.method, req.url);
+              console.log('🔧 Proxying API request to production:', req.method, req.url);
             });
           }
-        },
-        '/api': {
-          target: 'https://cvety.kz',
-          changeOrigin: true,
-          secure: true,
-          followRedirects: true
         }
       }
     },

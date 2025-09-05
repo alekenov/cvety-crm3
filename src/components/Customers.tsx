@@ -363,9 +363,9 @@ export function Customers({ onNavigateBack, onViewCustomer, onAddCustomer, custo
         console.warn('⚠️ Aggregated customers endpoint failed, falling back:', aggErr);
       }
 
-      // 2) Fallback: list with order statistics (may be slower but shows real data)
-      const customerList = await CustomerAPI.fetchCustomers(limit, page * PAGE_SIZE, true);
-      console.log(`✅ Loaded ${customerList.length} customers (fallback, with order statistics)`);
+      // 2) Fallback: list (используем статистику, которая уже приходит с /customers/)
+      const customerList = await CustomerAPI.fetchCustomers(limit, page * PAGE_SIZE, false);
+      console.log(`✅ Loaded ${customerList.length} customers (fallback, without per-customer orders)`);
 
       if (append) {
         setCustomers(prev => {

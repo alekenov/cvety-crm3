@@ -182,45 +182,41 @@ export function useAppState() {
     }
   };
 
-  // Load products from API on mount
+  // Load products when products tab is active (defer for other tabs)
   useEffect(() => {
+    if (activeTab !== 'products') return;
+
     const loadProducts = async () => {
       setIsLoadingProducts(true);
       try {
-        // Load vitrina products (without shop_id filter)
         const vitrinaResult = await fetchProductsAPI({ type: 'vitrina', limit: 100 });
-        
-        // Load catalog products with shop_id filter for shop 17008
         const catalogResult = await fetchProductsAPI({ type: 'catalog', limit: 100, shop_id: 17008 });
-        
         const allProducts: ProductDTO[] = [];
-        
-        if (vitrinaResult.success && vitrinaResult.data) {
-          allProducts.push(...vitrinaResult.data);
-        }
-        
-        if (catalogResult.success && catalogResult.data) {
-          allProducts.push(...catalogResult.data);
-        }
-        
+        if (vitrinaResult.success && vitrinaResult.data) allProducts.push(...vitrinaResult.data);
+        if (catalogResult.success && catalogResult.data) allProducts.push(...catalogResult.data);
         const convertedProducts = allProducts.map(convertDTOToProduct);
         setProducts(convertedProducts);
       } catch (error) {
         console.error('Failed to load products:', error);
-        // Fallback to empty array if API fails
         setProducts([]);
       } finally {
         setIsLoadingProducts(false);
       }
     };
-    
-    loadProducts();
-  }, []);
 
-  // Load inventory items on mount
+    // Грузим только если ещё не загружали
+    if (products.length === 0) {
+      loadProducts();
+    }
+  }, [activeTab]);
+
+  // Load inventory items when inventory tab is active (defer for other tabs)
   useEffect(() => {
-    loadInventoryItems();
-  }, []);
+    if (activeTab !== 'inventory') return;
+    if (inventoryItems.length === 0) {
+      loadInventoryItems();
+    }
+  }, [activeTab]);
 
   const [orders, setOrders] = useState<Order[]>([]);
 
