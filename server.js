@@ -21,6 +21,22 @@ app.use('/api', createProxyMiddleware({
   }
 }));
 
+// Image and upload proxy middleware - forward /upload requests to cvety.kz
+app.use('/upload', createProxyMiddleware({
+  target: 'https://cvety.kz',
+  changeOrigin: true,
+  secure: true,
+  followRedirects: true,
+  logLevel: 'info',
+  onProxyReq: (proxyReq, req, res) => {
+    console.log(`📸 Proxying image request: ${req.method} ${req.url} -> https://cvety.kz${req.url}`);
+  },
+  onError: (err, req, res) => {
+    console.error(`❌ Image proxy error for ${req.url}:`, err.message);
+    res.status(404).send('Image not found');
+  }
+}));
+
 // Serve static files from the build directory
 app.use(express.static(path.join(__dirname, 'build')));
 

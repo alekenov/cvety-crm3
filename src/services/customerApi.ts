@@ -66,6 +66,25 @@ export interface ApiCustomerOrdersResponse {
   total: number;
 }
 
+// New REST alias response type for customer orders
+export interface ApiCustomerOrdersResponseNew {
+  success: boolean;
+  status: boolean;
+  data: Array<{
+    id: number;
+    date: string;
+    total: number;
+    currency: string;
+    status_id: string;
+  }>;
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+  };
+}
+
 // New aggregated endpoint response type
 export interface ApiCustomerWithStats {
   id: number;
@@ -91,7 +110,7 @@ export interface ApiCustomersWithStatsResponse {
   data: {
     customers: ApiCustomerWithStats[];
     pagination: {
-      total: number;
+      total: number | null; // Can be null for heuristic pagination
       page: number;
       limit: number;
       pages: number;
@@ -421,7 +440,7 @@ export class CustomerAPI {
     
     try {
       // Always use direct HTTPS URL for fallback
-      const directDetailUrl = `https://cvety.kz/api/v2/customers/detail.php?id=${customerId}&access_token=${API_TOKEN}`;
+      const directDetailUrl = `/api/v2/customers/detail.php?id=${customerId}&access_token=${API_TOKEN}`;
       
       const detailResponse = await fetch(directDetailUrl, {
         method: 'GET',
@@ -443,7 +462,7 @@ export class CustomerAPI {
       }
 
       // Fetch customer orders via direct API
-      const directOrdersUrl = `https://cvety.kz/api/v2/customers/orders.php?CUSTOMER_ID=${customerId}`;
+      const directOrdersUrl = `/api/v2/customers/orders.php?CUSTOMER_ID=${customerId}`;
       
       let orders: ApiOrder[] = [];
       
@@ -559,13 +578,23 @@ export class CustomerAPI {
 
         let orders: ApiOrder[] = [];
         try {
-          const ordersData: ApiCustomerOrdersResponse = await api('/api/v2/customers/orders.php', {
-            query: { CUSTOMER_ID: customerId }
-          });
-          orders = ordersData.orders || [];
-          console.log(`✅ Found ${orders.length} orders for customer ${customerId}`);
+          // Try new REST alias first
+          const { orders: newOrders } = await this.fetchCustomerOrdersNew(customerId, 50);
+          orders = newOrders;
+          console.log(`✅ Found ${orders.length} orders for customer ${customerId} via REST alias`);
         } catch (ordersError) {
-          console.warn(`⚠️ Orders fetch failed for customer ${customerId}:`, ordersError);
+          console.warn(`⚠️ New orders endpoint failed for customer ${customerId}, trying legacy:`, ordersError);
+          
+          // Fallback to legacy method
+          try {
+            const ordersData: ApiCustomerOrdersResponse = await api('/api/v2/customers/orders.php', {
+              query: { CUSTOMER_ID: customerId }
+            });
+            orders = ordersData.orders || [];
+            console.log(`✅ Found ${orders.length} orders for customer ${customerId} via legacy endpoint`);
+          } catch (legacyError) {
+            console.warn(`⚠️ Legacy orders fetch also failed for customer ${customerId}:`, legacyError);
+          }
         }
 
         return transformCustomer(apiCustomer, orders);
@@ -588,10 +617,50 @@ export class CustomerAPI {
     }
   }
 
-  // Fetch customer orders (using unified API client)
+  // NEW: Fetch customer orders via REST alias (preferred method)
+  static async fetchCustomerOrdersNew(customerId: number, limit: number = 50, page: number = 1): Promise<{
+    orders: ApiOrder[];
+    pagination: { total: number; page: number; limit: number; pages: number };
+  }> {
+    try {
+      console.log(`🔍 Fetching orders for customer ${customerId} via REST alias`);
+      
+      const response: ApiCustomerOrdersResponseNew = await api(`/api/v2/customers/${customerId}/orders`, {
+        query: { limit, page }
+      });
+      
+      if (!response.success || !response.data) {
+        console.error('❌ Invalid response from customer orders REST alias');
+        return { orders: [], pagination: { total: 0, page: 1, limit, pages: 0 } };
+      }
+      
+      // Convert REST alias response to ApiOrder format
+      const orders: ApiOrder[] = response.data.map(orderData => ({
+        id: orderData.id,
+        number: String(orderData.id), // Use ID as number if not provided
+        date: orderData.date,
+        total: orderData.total,
+        status: 'pending', // Default status, could be mapped from status_id
+        status_id: orderData.status_id,
+        items: [] // Items not included in this endpoint
+      }));
+      
+      console.log(`✅ Found ${orders.length} orders for customer ${customerId} via REST alias`);
+      return {
+        orders,
+        pagination: response.pagination
+      };
+      
+    } catch (error) {
+      console.error('❌ Error fetching customer orders via REST alias:', error);
+      return { orders: [], pagination: { total: 0, page: 1, limit, pages: 0 } };
+    }
+  }
+
+  // Fetch customer orders (using unified API client) - LEGACY METHOD
   static async fetchCustomerOrders(customerId: number, limit: number = 50): Promise<ApiOrder[]> {
     try {
-      console.log(`🔍 Fetching orders for customer ${customerId}`);
+      console.log(`🔍 Fetching orders for customer ${customerId} (legacy method)`);
       
       const data: ApiCustomerOrdersResponse = await api('/api/v2/customers/orders.php', {
         query: { CUSTOMER_ID: customerId, limit }
@@ -659,7 +728,7 @@ export class CustomerAPI {
   ): Promise<{
     customers: Customer[];
     pagination: {
-      total: number;
+      total: number | null;
       page: number;
       limit: number;
       pages: number;
@@ -677,11 +746,7 @@ export class CustomerAPI {
       });
       
       if (!response.success || !response.data) {
-        console.error('❌ Invalid response from customers with stats API');
-        return {
-          customers: [],
-          pagination: { total: 0, page: 1, limit, pages: 0 }
-        };
+        throw new Error('Invalid response from customers with stats API');
       }
 
       // Transform aggregated data to frontend format
@@ -705,21 +770,23 @@ export class CustomerAPI {
         };
       });
 
-      console.log(`✅ Loaded ${customers.length} customers with stats (total: ${response.data.pagination.total})`);
+      console.log(`✅ Loaded ${customers.length} customers with stats (pagination total: ${response.data.pagination.total || 'unknown'})`);
       
       return {
         customers,
-        pagination: response.data.pagination
+        pagination: {
+          total: response.data.pagination.total,
+          page: response.data.pagination.page,
+          limit: response.data.pagination.limit,
+          pages: response.data.pagination.pages
+        }
       };
       
     } catch (error) {
       console.error('❌ Error fetching customers with stats:', error);
       
-      // Fallback to empty result
-      return {
-        customers: [],
-        pagination: { total: 0, page: 1, limit, pages: 0 }
-      };
+      // No fallback to old method - the new endpoint should work
+      throw error;
     }
   }
 }

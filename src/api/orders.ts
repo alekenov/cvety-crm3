@@ -59,58 +59,84 @@ export interface Order {
 }
 
 export async function fetchOrders(params: { status?: FrontStatus; date?: string; limit?: number; offset?: number }) {
+  const limit = params.limit || 30;
+  const offset = params.offset || 0;
   try {
-    // Use old API that has complete data
-    const response = await api('/api/v2/order/order-list', { 
-      query: { 
-        limit: params.limit || 50,
-        offset: params.offset || 0,
+    // Use new normalized endpoint
+    const response = await api('/api/v2/orders', {
+      query: {
+        limit,
+        offset,
         ...(params.status && params.status !== 'all' ? { status: front2bx[params.status] } : {})
-      } 
+      }
     });
-    
-    if (response && response.status === true && response.data?.orders) {
-      const orders = response.data.orders.map(transformLegacyOrderFromAPI);
-      
-      // Filter by status if needed
-      const filteredOrders = params.status && params.status !== 'all' 
-        ? orders.filter((o: Order) => o.status === params.status)
-        : orders;
-      
+
+    if (response && response.success === true && Array.isArray(response.data)) {
+      const mapped: Order[] = response.data.map((o: any) => ({
+        id: String(o.id),
+        number: String(o.number || o.id),
+        status: (o.status as FrontStatus) || (bx2front[o.status_id] || 'new'),
+        deliveryType: 'delivery',
+        deliveryCity: o.deliveryCity || '',
+        deliveryAddress: o.deliveryAddressShort || '',
+        deliveryDate: 'today',
+        deliveryTime: o.deliveryTime || '',
+        mainProduct: {
+          id: String(o.id),
+          image: o.mainImage || '',
+          title: 'Товар',
+          composition: ''
+        },
+        additionalItems: [],
+        recipient: { name: o.recipientMasked || '', phone: o.recipientPhoneMasked || '' },
+        sender: { name: '', phone: '' },
+        postcard: '',
+        comment: '',
+        anonymous: false,
+        payment: {
+          amount: o.paymentAmount || '0 ₸',
+          status: (o.paymentStatus === 'Оплачен' ? 'paid' : 'unpaid') as 'paid'|'unpaid'
+        },
+        executor: (o.executors && o.executors[0]) ? { florist: o.executors[0].name, courier: '' } : undefined,
+        photoBeforeDelivery: undefined,
+        history: [],
+        createdAt: o.createdAt || new Date().toISOString(),
+        updatedAt: undefined
+      }));
+
+      const filtered = params.status && params.status !== 'all'
+        ? mapped.filter(m => m.status === params.status)
+        : mapped;
+
       return {
         success: true,
-        data: filteredOrders,
+        data: filtered,
         pagination: {
-          total: filteredOrders.length,
-          limit: params.limit || 50,
-          offset: params.offset || 0,
-          hasMore: false
+          total: (response.pagination?.total as number) || filtered.length,
+          limit,
+          offset,
+          hasMore: !!response.pagination?.hasMore
         }
       };
     }
-    
-    return {
-      success: false,
-      data: [],
-      pagination: {
-        total: 0,
-        limit: params.limit || 50,
-        offset: params.offset || 0,
-        hasMore: false
-      }
-    };
+
+    // Fallback to legacy mapping if new endpoint is unavailable
+    if (response && response.status === true && response.data?.orders) {
+      const orders = response.data.orders.map(transformLegacyOrderFromAPI);
+      const filteredOrders = params.status && params.status !== 'all'
+        ? orders.filter((o: Order) => o.status === params.status)
+        : orders;
+      return {
+        success: true,
+        data: filteredOrders,
+        pagination: { total: filteredOrders.length, limit, offset, hasMore: false }
+      };
+    }
+
+    return { success: false, data: [], pagination: { total: 0, limit, offset, hasMore: false } };
   } catch (error) {
     console.error('Error fetching orders:', error);
-    return {
-      success: false,
-      data: [],
-      pagination: {
-        total: 0,
-        limit: params.limit || 50,
-        offset: params.offset || 0,
-        hasMore: false
-      }
-    };
+    return { success: false, data: [], pagination: { total: 0, limit, offset, hasMore: false } };
   }
 }
 
@@ -123,13 +149,13 @@ function transformLegacyOrderFromAPI(order: any): Order {
   const mainProduct = order.basket?.[0] ? {
     id: String(order.basket[0].id),
     image: order.basket[0].productImageSrc ? 
-      `https://cvety.kz${order.basket[0].productImageSrc}` : 
-      (order.productImage ? `https://cvety.kz${order.productImage}` : ''),
+      `${order.basket[0].productImageSrc}` : 
+      (order.productImage ? `${order.productImage}` : ''),
     title: order.basket[0].productName || order.productName || 'Товар',
     composition: ''
   } : {
     id: String(order.id),
-    image: order.productImage ? `https://cvety.kz${order.productImage}` : '',
+    image: order.productImage ? `${order.productImage}` : '',
     title: order.productName || 'Товар',
     composition: ''
   };
@@ -137,7 +163,7 @@ function transformLegacyOrderFromAPI(order: any): Order {
   // Build additional items from rest of basket
   const additionalItems = order.basket?.slice(1).map((item: any) => ({
     productId: String(item.id),
-    productImage: item.productImageSrc ? `https://cvety.kz${item.productImageSrc}` : '',
+    productImage: item.productImageSrc ? `${item.productImageSrc}` : '',
     productTitle: item.productName || '',
     quantity: item.amount || 1
   })) || [];
