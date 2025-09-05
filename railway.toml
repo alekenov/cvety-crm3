@@ -1,0 +1,15 @@
+name = "crm3"
+
+[build]
+build = "npm run build"
+
+[deploy]
+start = "npm run start"
+healthcheck_path = "/"
+healthcheck_timeout = 100
+
+[variables]
+# API_BASE is now handled by proxy server - no need to set VITE_API_BASE
+VITE_API_TOKEN = ""
+VITE_CITY_ID = "2"
+VITE_SHOP_ID = "17008"
