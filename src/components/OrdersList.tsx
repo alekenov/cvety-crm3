@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Package } from 'lucide-react';
+import { Plus, Search, Package, Calendar as CalendarIcon, X } from 'lucide-react';
 import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import { Calendar } from './ui/calendar';
 import { fetchOrders, changeOrderStatus, type FrontStatus, type Order } from '../api/orders';
 import { getTimeAgo } from '../utils/date';
 import { usePerformanceTracking } from '../utils/performance';
 import { useInView } from 'react-intersection-observer';
+import { urlManager, parseDateFromURL, formatDateForURL } from '../src/utils/url';
 
 // Status badge component matching original design
 function StatusBadge({ status, variant = 'default' }: { status: string; variant?: 'default' | 'success' | 'warning' | 'error' }) {
@@ -35,14 +39,18 @@ function FilterTabs({ tabs, activeTab, onTabChange }: {
         <button
           key={tab.key}
           onClick={() => onTabChange(tab.key)}
-          className={`px-3 py-1 rounded text-sm transition-colors ${
+          className={`px-3 py-1 rounded text-sm transition-colors flex items-center gap-2 ${
             activeTab === tab.key
               ? 'bg-primary text-primary-foreground'
               : 'bg-gray-100 text-gray-700'
           }`}
         >
-          {tab.label}
-          {tab.count !== undefined && ` (${tab.count})`}
+          <span>{tab.label}</span>
+          {tab.count !== undefined && (
+            <span className={`${activeTab === tab.key ? 'bg-white/20 text-primary-foreground' : 'bg-white text-gray-600'} px-1.5 py-0.5 rounded text-xs leading-none`}>
+              {tab.count}
+            </span>
+          )}
         </button>
       ))}
     </div>
@@ -129,11 +137,13 @@ function OrderStatusBadge({ status }: { status: FrontStatus }) {
 function OrderItem({ 
   order, 
   onClick, 
-  onStatusChange 
+  onStatusChange,
+  searchQuery
 }: { 
   order: Order; 
   onClick?: (id: string) => void;
   onStatusChange?: (id: string, newStatus: FrontStatus) => void;
+  searchQuery?: string;
 }) {
   const handleStatusClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -149,6 +159,17 @@ function OrderItem({
     if (newStatus && onStatusChange) {
       await onStatusChange(order.id, newStatus);
     }
+  };
+
+  // Highlight matches for search
+  const highlightMatch = (text: string, query?: string) => {
+    if (!query || !text) return text;
+    const safe = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(${safe})`, 'gi');
+    const parts = text.split(regex);
+    return parts.map((part, i) => (
+      regex.test(part) ? <mark key={i} className="bg-yellow-200 px-1 rounded">{part}</mark> : part
+    ));
   };
 
   // Get all product images (main + additional)
@@ -173,7 +194,7 @@ function OrderItem({
       <div className="flex justify-between items-start mb-3">
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-gray-900">{order.number}</span>
+            <span className="text-gray-900">{highlightMatch(order.number, searchQuery)}</span>
             <OrderStatusBadge status={order.status} />
             {order.payment.amount && order.payment.amount !== '0 ₸' && (
               <span className="text-gray-700 font-medium ml-2">{order.payment.amount}</span>
@@ -200,6 +221,23 @@ function OrderItem({
             )}
             {' • '}{getTimeAgo(order.createdAt)}
           </div>
+          {/* Matched fields preview */}
+          {searchQuery && (
+            <div className="text-sm text-gray-600 mt-1 space-y-0.5">
+              {order.sender?.name && order.sender.name.toLowerCase().includes(searchQuery.toLowerCase()) && (
+                <div>Отправитель: {highlightMatch(order.sender.name, searchQuery)}</div>
+              )}
+              {order.recipient?.name && order.recipient.name.toLowerCase().includes(searchQuery.toLowerCase()) && (
+                <div>Получатель: {highlightMatch(order.recipient.name, searchQuery)}</div>
+              )}
+              {order.sender?.phone && searchQuery.replace(/\D/g, '') && order.sender.phone.replace(/\D/g, '').includes(searchQuery.replace(/\D/g, '')) && (
+                <div>Тел. отправителя: {highlightMatch(order.sender.phone, searchQuery)}</div>
+              )}
+              {order.recipient?.phone && searchQuery.replace(/\D/g, '') && order.recipient.phone.replace(/\D/g, '').includes(searchQuery.replace(/\D/g, '')) && (
+                <div>Тел. получателя: {highlightMatch(order.recipient.phone, searchQuery)}</div>
+              )}
+            </div>
+          )}
         </div>
         {order.status !== 'completed' && ACTION_BUTTONS[order.status] && (
           <Button 
@@ -263,13 +301,26 @@ export default function OrdersList() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  // Initialize from URL
+  const urlParams = urlManager.getParams();
+  const [activeFilter, setActiveFilter] = useState<FilterType>((urlParams.filter as FilterType) || 'all');
+  const [isSearchOpen, setIsSearchOpen] = useState(!!urlParams.search);
+  const [searchQuery, setSearchQuery] = useState(urlParams.search || '');
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(parseDateFromURL(urlParams.date));
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   // Pagination state
   const [currentOffset, setCurrentOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const PAGE_SIZE = 30;
+
+  // Date helpers
+  const formatDateForDisplay = (date: Date) => {
+    return date.toLocaleDateString('ru-RU', { day: '2-digit', month: 'long', year: 'numeric' });
+  };
+
+  const toDateKey = (d: Date) => d.toDateString();
 
   // Infinite scroll setup
   const { ref: loadMoreRef, inView } = useInView({
@@ -338,6 +389,35 @@ export default function OrdersList() {
     loadOrders(true);
   }, [activeFilter]);
 
+  // Sync state to URL
+  useEffect(() => {
+    // filter
+    urlManager.setOrdersFilter(activeFilter, undefined);
+  }, [activeFilter]);
+
+  useEffect(() => {
+    // search
+    urlManager.setOrdersSearch(searchQuery || '');
+  }, [searchQuery]);
+
+  useEffect(() => {
+    // date
+    urlManager.setOrdersDate(selectedDate ? formatDateForURL(selectedDate) : '');
+  }, [selectedDate]);
+
+  // Listen to back/forward to rehydrate state
+  useEffect(() => {
+    const onPop = () => {
+      const p = urlManager.getParams();
+      setActiveFilter((p.filter as FilterType) || 'all');
+      setSearchQuery(p.search || '');
+      setIsSearchOpen(!!p.search);
+      setSelectedDate(parseDateFromURL(p.date));
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
   // Infinite scroll effect
   useEffect(() => {
     if (inView && hasMore && !isLoadingMore) {
@@ -366,13 +446,53 @@ export default function OrdersList() {
     }
   };
 
-  // Filter out completed orders and apply status filter (memoized)
+  // Search function
+  const searchOrders = (list: Order[], query: string) => {
+    if (!query.trim()) return list;
+    const q = query.toLowerCase().trim();
+    return list.filter(order => {
+      if (order.number?.toLowerCase().includes(q)) return true;
+      if (order.sender?.name && order.sender.name.toLowerCase().includes(q)) return true;
+      if (order.recipient?.name && order.recipient.name.toLowerCase().includes(q)) return true;
+      const cleanQ = q.replace(/\D/g, '');
+      if (cleanQ) {
+        const s = order.sender?.phone?.replace(/\D/g, '') || '';
+        const r = order.recipient?.phone?.replace(/\D/g, '') || '';
+        if (s.includes(cleanQ) || r.includes(cleanQ)) return true;
+      }
+      return false;
+    });
+  };
+
+  // Date filter
+  const filterByDate = (list: Order[], date?: Date) => {
+    if (!date) return list;
+    const y = date.getFullYear();
+    const m = date.getMonth();
+    const d = date.getDate();
+    const sameDay = (dt: Date) => dt.getFullYear() === y && dt.getMonth() === m && dt.getDate() === d;
+    const toDate = (o: Order): Date | null => {
+      if (o.deliveryDate === 'today') return new Date();
+      if (o.deliveryDate === 'tomorrow') { const t = new Date(); t.setDate(t.getDate() + 1); return t; }
+      const parsed = new Date(o.deliveryDate);
+      return isNaN(parsed.getTime()) ? null : parsed;
+    };
+    return list.filter(o => {
+      const dt = toDate(o);
+      return dt ? sameDay(dt) : false;
+    });
+  };
+
+  // Derived list with filters
   const filteredOrders = useMemo(() => {
     if (!orders || orders.length === 0) return [] as Order[];
-    return activeFilter === 'all'
+    let list = activeFilter === 'all'
       ? orders.filter(order => order.status !== 'completed')
       : orders.filter(order => order.status === activeFilter && order.status !== 'completed');
-  }, [orders, activeFilter]);
+    list = filterByDate(list, selectedDate);
+    list = searchOrders(list, searchQuery);
+    return list;
+  }, [orders, activeFilter, selectedDate, searchQuery]);
 
   // Count orders by status for tabs (excluding completed) - memoized
   const statusCounts = useMemo(() => ({
@@ -388,13 +508,66 @@ export default function OrdersList() {
     count: statusCounts[tab.key as keyof typeof statusCounts]
   }));
 
+  // Build calendar markers by delivery date
+  const orderCountsByDate = useMemo(() => {
+    const map = new Map<string, number>();
+    const normalize = (o: Order): Date | null => {
+      if (o.deliveryDate === 'today') return new Date();
+      if (o.deliveryDate === 'tomorrow') { const t = new Date(); t.setDate(t.getDate() + 1); return t; }
+      const d = new Date(o.deliveryDate);
+      return isNaN(d.getTime()) ? null : d;
+    };
+    orders.forEach(o => {
+      const d = normalize(o);
+      if (d) {
+        const key = toDateKey(d);
+        map.set(key, (map.get(key) || 0) + 1);
+      }
+    });
+    return map;
+  }, [orders]);
+
   const headerActions = (
     <>
+      <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+        <PopoverTrigger asChild>
+          <Button variant="ghost" size="sm" className="p-2">
+            <CalendarIcon className="w-5 h-5 text-gray-600" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="end">
+          <Calendar
+            mode="single"
+            selected={selectedDate}
+            onSelect={(d) => { setSelectedDate(d || undefined); setIsCalendarOpen(false); }}
+            modifiers={{
+              hasOrders: (date) => orderCountsByDate.has(toDateKey(date))
+            }}
+            modifiersClassNames={{ hasOrders: 'bg-blue-100 text-blue-900 font-medium relative' }}
+            components={{
+              DayContent: ({ date }) => {
+                const count = orderCountsByDate.get(toDateKey(date));
+                return (
+                  <div className="relative w-full h-full flex items-center justify-center">
+                    <span>{date.getDate()}</span>
+                    {count && count > 0 && (
+                      <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center leading-none">
+                        {count > 9 ? '9+' : count}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+            }}
+            initialFocus
+          />
+        </PopoverContent>
+      </Popover>
+      <Button variant="ghost" size="sm" className="p-2" onClick={() => setIsSearchOpen(v => !v)}>
+        <Search className="w-5 h-5 text-gray-600" />
+      </Button>
       <Button variant="ghost" size="sm" className="p-2" onClick={handleAddOrder}>
         <Plus className="w-5 h-5 text-gray-600" />
-      </Button>
-      <Button variant="ghost" size="sm" className="p-2">
-        <Search className="w-5 h-5 text-gray-600" />
       </Button>
     </>
   );
@@ -430,6 +603,49 @@ export default function OrdersList() {
     <div className="bg-white min-h-screen">
       <PageHeader title="Заказы" actions={headerActions} />
 
+      {/* Date Filter Bar */}
+      {selectedDate && (
+        <div className="p-4 border-b border-gray-100 bg-blue-50">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CalendarIcon className="w-4 h-4 text-blue-600" />
+              <span className="text-blue-900">Заказы на {formatDateForDisplay(selectedDate)}</span>
+              <div className="px-2 py-0.5 bg-blue-200 text-blue-800 rounded text-sm">{filteredOrders.length}</div>
+            </div>
+            <button onClick={() => setSelectedDate(undefined)} className="text-blue-600 hover:text-blue-800 transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Search Bar */}
+      {isSearchOpen && (
+        <div className="p-4 border-b border-gray-100 bg-gray-50">
+          <div className="relative">
+            <Input
+              type="text"
+              placeholder="Поиск по номеру заказа, имени или телефону..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pr-10"
+              autoFocus
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+          {searchQuery && (
+            <div className="mt-2 text-sm text-gray-600">Найдено: {filteredOrders.length} заказов</div>
+          )}
+        </div>
+      )}
+
       {/* Filter Tabs */}
       <div className="p-4 border-b border-gray-100">
         <FilterTabs 
@@ -449,6 +665,7 @@ export default function OrdersList() {
                 order={order} 
                 onClick={handleViewOrder}
                 onStatusChange={handleStatusChange}
+                searchQuery={searchQuery}
               />
             ))}
             
