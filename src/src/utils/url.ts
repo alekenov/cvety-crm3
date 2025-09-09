@@ -106,14 +106,13 @@ export class URLManager {
     }, true);
   }
 
-  // Helper methods for specific filters
+  // Helper methods for specific filters (without redundant tab parameter)
   setProductsFilter(filter: 'vitrina' | 'catalog'): void {
-    this.updateParams({ tab: 'products', filter }, true);
+    this.updateParams({ filter }, true);
   }
 
   setOrdersFilter(filter: string, deliveryFilter?: string): void {
     this.updateParams({ 
-      tab: 'orders', 
       filter: filter === 'all' ? null : filter,
       deliveryFilter: deliveryFilter === 'all' ? null : deliveryFilter
     }, true);
@@ -127,9 +126,10 @@ export class URLManager {
     this.updateParams({ date: date || null }, true);
   }
 
-  setActiveTab(tab: string): void {
-    this.updateParams({ tab }, true);
-  }
+  // NOTE: setActiveTab disabled - React Router handles main tab navigation via URL pathname
+  // setActiveTab(tab: string): void {
+  //   this.updateParams({ tab }, true);
+  // }
 
   // Get filter-specific URLs for sharing
   getFilterURL(params: Partial<AppURLParams>): string {

@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { Package, ClipboardList, Warehouse, Users, User } from "lucide-react";
+import { LoadingSpinner } from "./LoadingSpinner";
 
 interface Product {
   id: number;
@@ -85,28 +86,38 @@ export function MainTabView({
         {/* Main Content */}
         <div className="pb-16">
           {activeTab === 'orders' ? (
-            <OrdersComponent 
-              onViewOrder={onViewOrder}
-              onStatusChange={onStatusChange}
-              onAddOrder={onAddOrder}
-            />
+            <Suspense fallback={<LoadingSpinner message="Загрузка заказов..." size="sm" />}>
+              <OrdersComponent 
+                onViewOrder={onViewOrder}
+                onStatusChange={onStatusChange}
+                onAddOrder={onAddOrder}
+              />
+            </Suspense>
           ) : activeTab === 'products' ? (
-            <ProductsListComponent
-              products={products}
-              onAddProduct={onAddProduct}
-              onViewProduct={onViewProduct}
-              onToggleProduct={onToggleProduct}
-            />
+            <Suspense fallback={<LoadingSpinner message="Загрузка товаров..." size="sm" />}>
+              <ProductsListComponent
+                products={products}
+                onAddProduct={onAddProduct}
+                onViewProduct={onViewProduct}
+                onToggleProduct={onToggleProduct}
+              />
+            </Suspense>
           ) : activeTab === 'inventory' ? (
-            <InventoryComponent
-              onAddItem={onAddInventoryItem}
-              onViewItem={onViewInventoryItem}
-              onStartAudit={onStartInventoryAudit}
-            />
+            <Suspense fallback={<LoadingSpinner message="Загрузка склада..." size="sm" />}>
+              <InventoryComponent
+                onAddItem={onAddInventoryItem}
+                onViewItem={onViewInventoryItem}
+                onStartAudit={onStartInventoryAudit}
+              />
+            </Suspense>
           ) : activeTab === 'customers' ? (
-            <CustomersComponent />
+            <Suspense fallback={<LoadingSpinner message="Загрузка клиентов..." size="sm" />}>
+              <CustomersComponent />
+            </Suspense>
           ) : (
-            <ProfileComponent />
+            <Suspense fallback={<LoadingSpinner message="Загрузка профиля..." size="sm" />}>
+              <ProfileComponent />
+            </Suspense>
           )}
         </div>
 
