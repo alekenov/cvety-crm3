@@ -4,6 +4,7 @@ import App from "./App";
 
 const OrderDetailPage = lazy(() => import("./pages/OrderDetailPage"));
 const CustomerDetailPage = lazy(() => import("./pages/CustomerDetailPage"));
+const ProductDetailPage = lazy(() => import("./pages/ProductDetailPage"));
 
 const LoadingFallback = () => (
   <div className="min-h-screen flex items-center justify-center">
@@ -22,6 +23,14 @@ export const router = createBrowserRouter([
   {
     path: "/products",
     element: <App />,
+  },
+  {
+    path: "/products/:id",
+    element: (
+      <Suspense fallback={<LoadingFallback />}>
+        <ProductDetailPage />
+      </Suspense>
+    ),
   },
   {
     path: "/orders",

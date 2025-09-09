@@ -143,3 +143,50 @@ This system serves the Kazakhstan flower delivery market with specific requireme
 - Russian language interface
 - Seasonal demand patterns for holidays
 - Real-time order tracking and delivery coordination
+
+## Recent Improvements (2025)
+
+### Security & Configuration
+- **ENV Security**: Removed hardcoded API tokens from source code
+- **Environment Variables**: All sensitive data now in `.env` file (see `.env.example`)
+- **Security Warning**: Console warning when `VITE_API_TOKEN` is missing
+- **Best Practice**: No default tokens shipped in production code
+
+### API Client Enhancements
+- **Timeout Control**: 20-second default timeout with AbortController
+- **Retry Logic**: GET requests retry up to 2 times on 5xx/network errors
+- **Exponential Backoff**: 300ms → 600ms → 1200ms retry delays
+- **Performance Tracking**: All API calls logged with duration and success metrics
+- **Error Handling**: Comprehensive handling for HTTP errors, timeouts, and network failures
+
+### User Experience Improvements
+- **Optimistic Updates**: Product status toggles update UI immediately
+- **Error Recovery**: Automatic rollback on API failures with user notifications
+- **Race Condition Protection**: Prevents double-clicks during API calls
+- **Toast Notifications**: Success/error feedback using `sonner` library
+- **Real-time Feedback**: Status changes reflected instantly in the interface
+
+### Code Organization
+- **Import Aliases**: 
+  - `@` → `src/` for standard imports
+  - `@core` → `src/src/` for legacy structure (temporary)
+- **Clean Imports**: Removed verbose relative paths from App.tsx and main.tsx
+- **Migration Ready**: Structure prepared for gradual legacy code migration
+
+### Performance Monitoring
+- **Built-in Tracking**: Performance monitor tracks API latency, memory usage, and render metrics
+- **Development Insights**: Detailed performance logs in development mode
+- **Production Ready**: Monitoring system optimized for production deployment
+- **Metrics Collection**: FPS, DOM node count, API call success rates
+
+### Testing & Development
+- **Local Testing**: Complete setup instructions in README.md
+- **Error Simulation**: Network throttling testing support
+- **Debug Tools**: Enhanced console logging for API calls and performance
+- **Development Workflow**: Improved developer experience with better error messages
+
+### Implementation Notes
+- **No New Dependencies**: All improvements use existing libraries
+- **Backward Compatibility**: Changes maintain existing API contracts
+- **Error Boundaries**: Graceful degradation on component failures
+- **Mobile Optimization**: Touch-friendly interface maintained

@@ -3,75 +3,24 @@ import { Plus, Search } from "lucide-react";
 import { Button } from "./components/ui/button";
 import { Switch } from "./components/ui/switch";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Toaster } from "./components/ui/sonner";
 
 // Centralized imports
-import { Screen } from "./src/types";
-import { useAppContext } from "./src/contexts/AppContext";
-import { useAppActions } from "./src/hooks/useAppActions";
+import { Screen } from "@core/types";
+import { useAppContext } from "@core/contexts/AppContext";
+import { useAppActions } from "@core/hooks/useAppActions";
 
-// Import types for inline components
-import { Product } from "./src/types";
-import { getTimeAgo } from "./src/utils/date";
+// Import types
+import { Product } from "@core/types";
+import { getTimeAgo } from "@core/utils/date";
 
 // Import API methods
 import { fetchProducts, toggleProductActive, fetchProductDetail } from "./api/products";
 import type { ProductDTO } from "./api/products";
 
-// Temporary inline components until import issues are resolved
-function FilterTabs({ tabs, activeTab, onTabChange }: { 
-  tabs: Array<{ key: string; label: string; count?: number }>; 
-  activeTab: string; 
-  onTabChange: (tab: string) => void; 
-}) {
-  return (
-    <div className="flex gap-2">
-      {tabs.map((tab) => (
-        <button
-          key={tab.key}
-          onClick={() => onTabChange(tab.key)}
-          className={`px-3 py-1 rounded text-sm transition-colors ${
-            activeTab === tab.key
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-gray-100 text-gray-700'
-          }`}
-        >
-          {tab.label}
-          {tab.count !== undefined && ` (${tab.count})`}
-        </button>
-      ))}
-    </div>
-  );
-}
+// Import design system components
+import { FilterTabs, EmptyState, PageHeader } from "@core/components";
 
-function EmptyState({ icon, title, description }: { 
-  icon: React.ReactNode; 
-  title: string; 
-  description: string; 
-}) {
-  return (
-    <div className="flex flex-col items-center justify-center py-20 px-6">
-      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-        {icon}
-      </div>
-      <h3 className="text-gray-900 mb-2">{title}</h3>
-      <p className="text-gray-500 text-center mb-4">{description}</p>
-    </div>
-  );
-}
-
-function PageHeader({ title, actions }: { 
-  title: string; 
-  actions?: React.ReactNode; 
-}) {
-  return (
-    <div className="flex items-center justify-between p-4 border-b border-gray-100">
-      <div>
-        <h1 className="text-gray-900">{title}</h1>
-      </div>
-      {actions && <div className="flex gap-1">{actions}</div>}
-    </div>
-  );
-}
 
 function ProductItem({ id, image, title, price, isAvailable, createdAt, onToggle, onView }: Product & {
   onToggle: (id: number) => void;
@@ -169,7 +118,10 @@ export default function App() {
         state.setActiveTab('inventory');
       } else if (currentPath === '/profile') {
         state.setActiveTab('profile');
+      } else if (currentPath === '/products') {
+        state.setActiveTab('products');
       } else {
+        // Для главной страницы "/" показываем продукты по умолчанию
         state.setActiveTab('products');
       }
     }
@@ -187,11 +139,23 @@ export default function App() {
     );
   }
   
+  // Create a React Router-aware setActiveTab function
+  const handleSetActiveTab = (tab: 'orders' | 'products' | 'inventory' | 'customers' | 'profile') => {
+    const routeMap = {
+      'orders': '/orders',
+      'products': '/products',
+      'inventory': '/inventory',
+      'customers': '/customers',
+      'profile': '/profile'
+    };
+    navigate(routeMap[tab]);
+  };
+
   const actions = useAppActions({
     setCurrentScreen: state.setCurrentScreen,
     navigateToScreen: state.navigateToScreen,
     navigateBack: state.navigateBack,
-    setActiveTab: state.setActiveTab,
+    setActiveTab: handleSetActiveTab,
     setSelectedProductId: state.setSelectedProductId,
     setSelectedOrderId: state.setSelectedOrderId,
     setSelectedInventoryItemId: state.setSelectedInventoryItemId,
@@ -210,18 +174,28 @@ export default function App() {
   switch (state.currentScreen) {
     case 'selector':
       return (
+        <>
         <ProductTypeSelector 
           onClose={actions.handleCloseToList}
           onSelectVitrina={actions.handleSelectVitrina}
           onSelectCatalog={actions.handleSelectCatalog}
         />
+        <Toaster position="top-center" />
+        </>
       );
     case 'vitrina-form':
-      return <AddProductForm onClose={actions.handleCloseToList} />;
+      return <>
+        <AddProductForm onClose={actions.handleCloseToList} />
+        <Toaster position="top-center" />
+      </>;
     case 'catalog-form':
-      return <AddCatalogForm onClose={actions.handleCloseToList} />;
+      return <>
+        <AddCatalogForm onClose={actions.handleCloseToList} />
+        <Toaster position="top-center" />
+      </>;
     case 'product-detail':
       return (
+        <>
         <ProductDetail 
           productId={state.selectedProductId} 
           products={state.products}
@@ -229,20 +203,29 @@ export default function App() {
           onUpdateProduct={actions.updateProduct}
           onEditProduct={actions.handleEditProduct}
         />
+        <Toaster position="top-center" />
+        </>
       );
     case 'edit-catalog':
       return (
+        <>
         <EditCatalogForm 
           productId={state.selectedProductId}
           products={state.products}
           onClose={actions.handleCloseToList}
           onUpdateProduct={actions.updateProduct}
         />
+        <Toaster position="top-center" />
+        </>
       );
     case 'dashboard':
-      return <Dashboard onNavigateBack={actions.handleCloseToList} />;
+      return <>
+        <Dashboard onNavigateBack={actions.handleCloseToList} />
+        <Toaster position="top-center" />
+      </>;
     case 'order-detail':
       return (
+        <>
         <OrderDetail
           orderId={state.selectedOrderId || ''}
           onClose={actions.handleCloseToList}
@@ -250,26 +233,35 @@ export default function App() {
           onDelete={actions.handleDeleteOrder}
           onUpdateStatus={actions.handleUpdateOrderStatus}
         />
+        <Toaster position="top-center" />
+        </>
       );
     case 'add-order':
       return (
+        <>
         <AddOrder
           products={state.products}
           onClose={actions.handleCloseToList}
           onCreateOrder={actions.handleCreateOrder}
         />
+        <Toaster position="top-center" />
+        </>
       );
     case 'add-inventory-item':
       return (
+        <>
         <AddInventoryItem
           onClose={actions.handleCloseToList}
           onProcessSupply={(items) => {
             console.log('Supply processed with items:', items);
           }}
         />
+        <Toaster position="top-center" />
+        </>
       );
     case 'inventory-item-detail':
       return (
+        <>
         <InventoryItemDetail
           itemId={state.selectedInventoryItemId || 0}
           onClose={actions.handleCloseToList}
@@ -277,18 +269,24 @@ export default function App() {
             console.log('Update inventory item:', itemId, updates);
           }}
         />
+        <Toaster position="top-center" />
+        </>
       );
     case 'inventory-audit':
       return (
+        <>
         <InventoryAudit
           onClose={actions.handleCloseToList}
           onSaveAudit={(auditResults) => {
             console.log('Audit results saved:', auditResults);
           }}
         />
+        <Toaster position="top-center" />
+        </>
       );
     case 'customer-detail':
       return (
+        <>
         <CustomerDetail
           customerId={state.selectedCustomerId || 0}
           customers={state.customers}
@@ -296,22 +294,28 @@ export default function App() {
           onUpdateCustomer={actions.updateCustomer}
           onViewOrder={actions.handleViewOrder}
         />
+        <Toaster position="top-center" />
+        </>
       );
     case 'add-customer':
       return (
+        <>
         <AddCustomer
           onClose={actions.handleCloseToList}
           onCreateCustomer={actions.handleCreateCustomer}
         />
+        <Toaster position="top-center" />
+        </>
       );
 
 
     default:
       return (
+        <>
         <MainTabView
           products={state.products}
           activeTab={state.activeTab}
-          onActiveTabChange={state.setActiveTab}
+          onActiveTabChange={handleSetActiveTab}
           onAddProduct={actions.handleAddProduct}
           onViewProduct={actions.handleViewProduct}
           onToggleProduct={actions.toggleProductStatus}
@@ -329,6 +333,8 @@ export default function App() {
           CustomersComponent={(props: any) => <Customers {...props} onViewCustomer={actions.handleViewCustomer} onAddCustomer={actions.handleAddCustomer} customers={state.customers} />}
           ProfileComponent={(props: any) => <Profile {...props} showHeader={false} />}
         />
+        <Toaster position="top-center" />
+        </>
       );
   }
 }

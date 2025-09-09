@@ -301,6 +301,7 @@ export function Customers({ onNavigateBack, onViewCustomer, onAddCustomer, custo
   const [currentPage, setCurrentPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [showAll, setShowAll] = useState(false);
+  const [totalCustomers, setTotalCustomers] = useState<number | null>(null);
   const PAGE_SIZE = 20;
 
   // Infinite scroll setup
@@ -336,49 +337,28 @@ export function Customers({ onNavigateBack, onViewCustomer, onAddCustomer, custo
 
       console.log(`🔄 Loading customers: page=${actualPage}, limit=${limit}, append=${append}`);
 
-      // 1) Try fast aggregated endpoint to avoid N+1
-      try {
-        const { customers: statsCustomers, pagination } = await CustomerAPI.getCustomersWithStats(actualPage, limit);
+      // Use the new aggregated endpoint (no fallback needed)
+      const { customers: statsCustomers, pagination } = await CustomerAPI.getCustomersWithStats(actualPage, limit);
 
-        if (statsCustomers && statsCustomers.length > 0) {
-          console.log(`✅ Loaded ${statsCustomers.length} customers (aggregated)`);
-
-          if (append) {
-            setCustomers(prev => {
-              const existingIds = new Set(prev.map(c => c.id));
-              const newCustomers = statsCustomers.filter(c => !existingIds.has(c.id));
-              return [...prev, ...newCustomers];
-            });
-          } else {
-            setCustomers(statsCustomers as CustomerWithAvatar[]);
-          }
-
-          setHasMore(actualPage < (pagination.pages || 0) && !showAll);
-          if (append) setCurrentPage(page); else setCurrentPage(0);
-          return; // done
-        } else {
-          console.warn('⚠️ Aggregated endpoint returned empty result, falling back');
-        }
-      } catch (aggErr) {
-        console.warn('⚠️ Aggregated customers endpoint failed, falling back:', aggErr);
-      }
-
-      // 2) Fallback: list (используем статистику, которая уже приходит с /customers/)
-      const customerList = await CustomerAPI.fetchCustomers(limit, page * PAGE_SIZE, false);
-      console.log(`✅ Loaded ${customerList.length} customers (fallback, without per-customer orders)`);
+      console.log(`✅ Loaded ${statsCustomers.length} customers via aggregated endpoint`);
 
       if (append) {
         setCustomers(prev => {
           const existingIds = new Set(prev.map(c => c.id));
-          const newCustomers = customerList.filter(c => !existingIds.has(c.id));
+          const newCustomers = statsCustomers.filter(c => !existingIds.has(c.id));
           return [...prev, ...newCustomers];
         });
       } else {
-        setCustomers(customerList as CustomerWithAvatar[]);
+        setCustomers(statsCustomers as CustomerWithAvatar[]);
       }
 
-      setHasMore(customerList.length === PAGE_SIZE && !showAll);
+      setHasMore(actualPage < pagination.pages && !showAll);
       if (append) setCurrentPage(page); else setCurrentPage(0);
+      
+      // Store total customers count from pagination
+      if (pagination.total !== null && !append) {
+        setTotalCustomers(pagination.total);
+      }
 
     } catch (err) {
       console.error('Failed to load customers:', err);
@@ -529,7 +509,10 @@ export function Customers({ onNavigateBack, onViewCustomer, onAddCustomer, custo
                   <div className="text-center space-y-3">
                     {/* Show current stats */}
                     <p className="text-sm text-gray-600">
-                      Показано {filteredCustomers.length} из {showAll ? 'всех' : 'загруженных'} клиентов
+                      Показано {filteredCustomers.length} из {totalCustomers !== null ? totalCustomers : 'загруженных'} клиентов
+                      {totalCustomers !== null && totalCustomers > filteredCustomers.length && !showAll && (
+                        <span className="text-blue-600"> (есть еще)</span>
+                      )}
                     </p>
                     
                     {/* Manual action buttons */}

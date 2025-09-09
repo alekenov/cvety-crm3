@@ -29,6 +29,7 @@
             "@radix-ui/react-toggle": "^1.1.2",
             "@radix-ui/react-toggle-group": "^1.1.2",
             "@radix-ui/react-tooltip": "^1.1.8",
+            "@tanstack/react-query": "^5.87.1",
             "class-variance-authority": "^0.7.1",
             "clsx": "*",
             "cmdk": "^1.1.1",
@@ -51,14 +52,14 @@
       "devDependencies": {
             "@types/node": "^20.10.0",
             "@vitejs/plugin-react-swc": "^3.10.2",
-            "vite": "^5.4.19",
             "express": "^4.19.2",
-            "http-proxy-middleware": "^2.0.6"
+            "http-proxy-middleware": "^2.0.6",
+            "vite": "^5.4.19"
       },
-  "scripts": {
+      "scripts": {
             "dev": "vite",
             "build": "vite build",
             "start": "node server.js",
             "preview": "vite preview --host 0.0.0.0 --port ${PORT:-3000}"
-  }
+      }
 }

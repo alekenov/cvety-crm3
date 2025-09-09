@@ -1,8 +1,11 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
-import { Plus, Search, Package, Clipboard, Loader2 } from "lucide-react";
-import { useAppContext } from "../src/contexts/AppContext";
-import type { InventoryItem } from "../src/types";
+import { Input } from "./ui/input";
+import { Plus, Search, Package, Clipboard, X } from "lucide-react";
+import { toast } from "sonner";
+// API imports
+import { fetchInventoryItems, categorizeInventoryItem, formatInventoryPrice } from "../api/inventory";
+import type { InventoryItemDTO } from "../api/inventory";
 // Temporary inline components to avoid import issues
 
 function FilterTabs({ tabs, activeTab, onTabChange }: { 
@@ -72,6 +75,89 @@ function PageHeader({ title, subtitle, onBack, actions }: {
   );
 }
 
+interface InventoryItem {
+  id: number;
+  name: string;
+  category: 'flowers' | 'greenery' | 'accessories';
+  price: string; // за единицу
+  unit: string; // штука, грамм, метр
+  quantity: number; // текущий остаток
+  lastDelivery: Date;
+  image: string;
+}
+
+const mockInventoryItems: InventoryItem[] = [
+  {
+    id: 1,
+    name: "Розы красные",
+    category: 'flowers',
+    price: "450 ₸",
+    unit: "шт",
+    quantity: 85,
+    lastDelivery: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+    image: "https://images.unsplash.com/photo-1518895949257-7621c3c786d7?w=100&h=100&fit=crop"
+  },
+  {
+    id: 2,
+    name: "Тюльпаны белые",
+    category: 'flowers',
+    price: "320 ₸",
+    unit: "шт",
+    quantity: 12,
+    lastDelivery: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
+    image: "https://images.unsplash.com/photo-1582794543139-8ac9cb0f7b11?w=100&h=100&fit=crop"
+  },
+  {
+    id: 3,
+    name: "Лилии розовые",
+    category: 'flowers',
+    price: "650 ₸",
+    unit: "шт",
+    quantity: 24,
+    lastDelivery: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+    image: "https://images.unsplash.com/photo-1565011523534-747a8601f1a4?w=100&h=100&fit=crop"
+  },
+  {
+    id: 4,
+    name: "Эвкалипт",
+    category: 'greenery',
+    price: "180 ₸",
+    unit: "ветка",
+    quantity: 45,
+    lastDelivery: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000),
+    image: "https://images.unsplash.com/photo-1586744687037-b4f9c5d1fcd8?w=100&h=100&fit=crop"
+  },
+  {
+    id: 5,
+    name: "Хризантемы желтые",
+    category: 'flowers',
+    price: "280 ₸",
+    unit: "шт",
+    quantity: 8,
+    lastDelivery: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+    image: "https://images.unsplash.com/photo-1572731973537-34afe46c4bc6?w=100&h=100&fit=crop"
+  },
+  {
+    id: 6,
+    name: "Лента атласная",
+    category: 'accessories',
+    price: "25 ₸",
+    unit: "метр",
+    quantity: 150,
+    lastDelivery: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+    image: "https://images.unsplash.com/photo-1513475382585-d06e58bcb0e0?w=100&h=100&fit=crop"
+  },
+  {
+    id: 7,
+    name: "Гипсофила",
+    category: 'flowers',
+    price: "120 ₸",
+    unit: "ветка",
+    quantity: 3,
+    lastDelivery: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
+    image: "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=100&h=100&fit=crop"
+  }
+];
 
 function getTimeAgo(date: Date): string {
   const now = new Date();
@@ -97,6 +183,7 @@ function getTimeAgo(date: Date): string {
 
 interface InventoryItemProps extends InventoryItem {
   onEdit: (id: number) => void;
+  searchQuery?: string;
 }
 
 function InventoryItemComponent({ 
@@ -108,11 +195,25 @@ function InventoryItemComponent({
   quantity, 
   lastDelivery, 
   image,
-  service,
-  onEdit 
+  onEdit,
+  searchQuery
 }: InventoryItemProps) {
-  const imageUrl = image || "https://images.unsplash.com/photo-1518895949257-7621c3c786d7?w=100&h=100&fit=crop";
-  
+  // Функция для подсветки совпадений в поиске
+  const highlightMatch = (text: string, query?: string) => {
+    if (!query || !text) return text;
+    
+    const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')})`, 'gi');
+    const parts = text.split(regex);
+    
+    return parts.map((part, index) => 
+      regex.test(part) ? (
+        <mark key={index} className="bg-yellow-200 px-1 rounded">{part}</mark>
+      ) : (
+        part
+      )
+    );
+  };
+
   return (
     <div 
       className="p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
@@ -121,35 +222,25 @@ function InventoryItemComponent({
       <div className="flex justify-between items-start mb-3">
         <div className="flex items-center space-x-4">
           <div 
-            className="w-12 h-12 bg-cover bg-center rounded-full relative overflow-hidden flex-shrink-0"
-            style={{ backgroundImage: `url('${imageUrl}')` }}
+            className="w-20 h-24 bg-cover bg-center rounded-lg relative overflow-hidden flex-shrink-0"
+            style={{ backgroundImage: `url('${image}')` }}
           />
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-gray-900">{name}</span>
-              {service && (
-                <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded">
-                  Услуга
-                </span>
-              )}
+            <div className="mb-1">
+              <span className="text-gray-900">{highlightMatch(name, searchQuery)}</span>
             </div>
             <div className="text-gray-700">
-              {price} / {unit}
+              {highlightMatch(price, searchQuery)} / {unit}
             </div>
-            {lastDelivery && (
-              <div className="text-gray-600 text-sm">
-                Поставка: {getTimeAgo(lastDelivery)}
-              </div>
-            )}
+            <div className="text-gray-600 text-sm">
+              Поставка: {getTimeAgo(lastDelivery)}
+            </div>
           </div>
         </div>
         <div className="text-right">
-          <div className={`text-gray-900 ${quantity === 0 ? 'text-red-600' : quantity < 10 ? 'text-orange-600' : ''}`}>
+          <div className="text-gray-900">
             {quantity} {unit}
           </div>
-          {quantity === 0 && (
-            <div className="text-xs text-red-500 mt-1">Нет в наличии</div>
-          )}
         </div>
       </div>
     </div>
@@ -163,64 +254,74 @@ interface InventoryProps {
 }
 
 export function Inventory({ onAddItem, onViewItem, onStartAudit }: InventoryProps) {
-  const { inventoryItems, isLoadingInventory, inventoryPagination, loadInventoryItems } = useAppContext();
   const [filter, setFilter] = useState<'all' | 'flowers' | 'greenery' | 'accessories'>('all');
+  const [items, setItems] = useState<InventoryItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [showSearch, setShowSearch] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
-  // Filter items locally for category, use API for search
-  const filteredItems = useMemo(() => {
-    return inventoryItems.filter(item => {
-      if (filter === 'all') return true;
-      return item.category === filter;
-    });
-  }, [inventoryItems, filter]);
-
-  // Debounced search to avoid excessive API calls
-  const debouncedSearch = useCallback(
-    debounce(async (query: string) => {
-      await loadInventoryItems({
-        search: query.trim() || undefined,
-        offset: 0
-      });
-    }, 300),
-    [loadInventoryItems]
-  );
-
-  // Handle search with API
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
-    debouncedSearch(query);
-  };
-
-  // Simple debounce implementation
-  function debounce<T extends (...args: any[]) => any>(
-    func: T,
-    wait: number
-  ): (...args: Parameters<T>) => void {
-    let timeout: NodeJS.Timeout;
-    return (...args: Parameters<T>) => {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => func(...args), wait);
+  // Load inventory items from API
+  useEffect(() => {
+    const loadInventoryItems = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        
+        const response = await fetchInventoryItems({
+          limit: 100, // Load more items
+          offset: 0
+        });
+        
+        if (response.success && response.data) {
+          // Transform API data to component format
+          const transformedItems: InventoryItem[] = response.data.map((dto: InventoryItemDTO) => ({
+            id: dto.id,
+            name: dto.name,
+            category: categorizeInventoryItem(dto),
+            price: formatInventoryPrice(dto.cost),
+            unit: dto.service ? 'услуга' : 'шт', // Default unit, could be enhanced
+            quantity: dto.quantity,
+            lastDelivery: new Date(Date.now() - Math.random() * 10 * 24 * 60 * 60 * 1000), // Random delivery date for now
+            image: dto.image || "https://images.unsplash.com/photo-1518895949257-7621c3c786d7?w=100&h=100&fit=crop" // Default image
+          }));
+          
+          setItems(transformedItems);
+        } else {
+          setError('Не удалось загрузить товары склада');
+        }
+      } catch (err) {
+        console.error('Error loading inventory items:', err);
+        setError('Ошибка при загрузке данных склада');
+        toast.error('Не удалось загрузить данные склада');
+      } finally {
+        setIsLoading(false);
+      }
     };
-  }
 
-  // Handle filter change
-  const handleFilterChange = async (newFilter: 'all' | 'flowers' | 'greenery' | 'accessories') => {
-    setFilter(newFilter);
+    loadInventoryItems();
+  }, []);
+
+  // Функция поиска товаров на складе
+  const searchItems = (items: InventoryItem[], query: string) => {
+    if (!query.trim()) return items;
     
-    // For API-level filtering, we could map categories to flower types
-    let flowerFilter: string | undefined;
-    if (newFilter === 'flowers') {
-      flowerFilter = 'roses'; // Default to roses, could be enhanced
-    }
+    const lowerQuery = query.toLowerCase().trim();
     
-    await loadInventoryItems({
-      flower: flowerFilter,
-      search: searchQuery.trim() || undefined,
-      offset: 0
+    return items.filter(item => {
+      return item.name.toLowerCase().includes(lowerQuery) ||
+             item.price.toLowerCase().includes(lowerQuery) ||
+             item.unit.toLowerCase().includes(lowerQuery);
     });
   };
+
+  let filteredItems = items.filter(item => {
+    if (filter === 'all') return true;
+    return item.category === filter;
+  });
+
+  // Применяем поиск
+  filteredItems = searchItems(filteredItems, searchQuery);
 
   const handleEditItem = (id: number) => {
     if (onViewItem) {
@@ -228,20 +329,28 @@ export function Inventory({ onAddItem, onViewItem, onStartAudit }: InventoryProp
     }
   };
 
-  const handleLoadMore = async () => {
-    if (!inventoryPagination.hasMore || isLoadingInventory) return;
-    
-    await loadInventoryItems({
-      search: searchQuery.trim() || undefined,
-      offset: inventoryPagination.offset + inventoryPagination.limit
-    });
+  const handleSearchClick = () => {
+    const newIsSearchOpen = !isSearchOpen;
+    setIsSearchOpen(newIsSearchOpen);
+    if (!newIsSearchOpen) {
+      setSearchQuery('');
+    }
+  };
+
+  const handleSearchChange = (query: string) => {
+    setSearchQuery(query);
+  };
+
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    setIsSearchOpen(false);
   };
 
   const filterOptions = [
-    { key: 'all', label: 'Все', count: inventoryItems.length },
-    { key: 'flowers', label: 'Цветы', count: inventoryItems.filter(i => i.category === 'flowers').length },
-    { key: 'greenery', label: 'Зелень', count: inventoryItems.filter(i => i.category === 'greenery').length },
-    { key: 'accessories', label: 'Аксессуары', count: inventoryItems.filter(i => i.category === 'accessories').length }
+    { key: 'all', label: 'Все' },
+    { key: 'flowers', label: 'Цветы' },
+    { key: 'greenery', label: 'Зелень' },
+    { key: 'accessories', label: 'Аксессуары' }
   ];
 
   const headerActions = (
@@ -255,31 +364,69 @@ export function Inventory({ onAddItem, onViewItem, onStartAudit }: InventoryProp
       <Button 
         variant="ghost" 
         size="sm" 
-        className="p-2"
-        onClick={() => setShowSearch(!showSearch)}
+        className={`p-2 ${isSearchOpen ? 'bg-gray-100' : ''}`}
+        onClick={handleSearchClick}
       >
         <Search className="w-5 h-5 text-gray-600" />
       </Button>
     </>
   );
 
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="bg-white min-h-screen">
+        <PageHeader title="Склад" actions={headerActions} />
+        <div className="flex items-center justify-center py-20">
+          <div className="text-gray-500">Загрузка склада...</div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="bg-white min-h-screen">
+        <PageHeader title="Склад" actions={headerActions} />
+        <div className="flex flex-col items-center justify-center py-20 px-6">
+          <div className="text-red-500 text-center mb-4">{error}</div>
+          <Button onClick={() => window.location.reload()}>Попробовать снова</Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white min-h-screen">
       <PageHeader title="Склад" actions={headerActions} />
 
       {/* Search Bar */}
-      {showSearch && (
-        <div className="p-4 border-b border-gray-100">
+      {isSearchOpen && (
+        <div className="p-4 border-b border-gray-100 bg-gray-50">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-            <input
+            <Input
               type="text"
-              placeholder="Поиск по названию..."
+              placeholder="Поиск по названию, цене или единице измерения..."
               value={searchQuery}
-              onChange={(e) => handleSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="pr-10"
+              autoFocus
             />
+            {searchQuery && (
+              <button
+                onClick={handleClearSearch}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
+          {searchQuery && (
+            <div className="mt-2 text-sm text-gray-600">
+              Найдено: {filteredItems.length} позиций
+            </div>
+          )}
         </div>
       )}
 
@@ -288,54 +435,31 @@ export function Inventory({ onAddItem, onViewItem, onStartAudit }: InventoryProp
         <FilterTabs 
           tabs={filterOptions} 
           activeTab={filter} 
-          onTabChange={(tab) => handleFilterChange(tab as any)} 
+          onTabChange={(tab) => setFilter(tab as any)} 
         />
       </div>
 
-      {/* Loading State */}
-      {isLoadingInventory && inventoryItems.length === 0 ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="text-center">
-            <Loader2 className="w-8 h-8 animate-spin text-purple-600 mx-auto mb-2" />
-            <p className="text-gray-600">Загрузка товаров...</p>
-          </div>
-        </div>
-      ) : filteredItems.length > 0 ? (
+      {/* Items List */}
+      {filteredItems.length > 0 ? (
         <div className="pb-20">
           {filteredItems.map((item) => (
             <InventoryItemComponent 
               key={item.id}
               {...item}
               onEdit={handleEditItem}
+              searchQuery={searchQuery}
             />
           ))}
-
-          {/* Load More Button */}
-          {inventoryPagination.hasMore && (
-            <div className="p-4 text-center border-t border-gray-100">
-              <Button 
-                variant="ghost" 
-                onClick={handleLoadMore}
-                disabled={isLoadingInventory}
-                className="w-full"
-              >
-                {isLoadingInventory ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                    Загрузка...
-                  </>
-                ) : (
-                  `Показать ещё (осталось ${inventoryPagination.total - inventoryPagination.offset - inventoryPagination.limit})`
-                )}
-              </Button>
-            </div>
-          )}
         </div>
       ) : (
         <EmptyState
-          icon={<Package className="w-8 h-8 text-gray-400" />}
-          title={searchQuery ? "Товары не найдены" : "Нет товаров на складе"}
-          description={searchQuery ? `По запросу "${searchQuery}" ничего не найдено` : "Добавьте цветы и материалы для отслеживания остатков"}
+          icon={searchQuery ? <Search className="w-8 h-8 text-gray-400" /> : <Package className="w-8 h-8 text-gray-400" />}
+          title={searchQuery ? "По запросу ничего не найдено" : "Нет товаров на складе"}
+          description={
+            searchQuery 
+              ? `Попробуйте изменить поисковый запрос "${searchQuery}"`
+              : "Добавьте цветы и материалы для отслеживания остатков"
+          }
         />
       )}
     </div>

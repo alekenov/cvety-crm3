@@ -3,7 +3,7 @@
   import react from '@vitejs/plugin-react-swc';
   import path from 'path';
 
-  export default defineConfig({
+export default defineConfig({
     plugins: [react()],
     resolve: {
       extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],
@@ -52,7 +52,16 @@
         '@radix-ui/react-alert-dialog@1.1.6': '@radix-ui/react-alert-dialog',
         '@radix-ui/react-accordion@1.2.3': '@radix-ui/react-accordion',
         '@': path.resolve(__dirname, './src'),
+        // Temporary alias for legacy nested structure. Migrate away gradually.
+        '@core': path.resolve(__dirname, './src/src'),
+        '@/shared': path.resolve(__dirname, './src/shared'),
+        '@/features': path.resolve(__dirname, './src/features'),
+        '@/app': path.resolve(__dirname, './src/app'),
       },
+    },
+    preview: {
+      // Allow Railway preview domain
+      allowedHosts: true,
     },
     build: {
       target: 'esnext',

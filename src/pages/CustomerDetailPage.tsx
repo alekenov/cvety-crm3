@@ -111,9 +111,24 @@ export default function CustomerDetailPage() {
       setError(null);
       
       // Load customer data with orders from unified endpoint
-      const response = await CustomerAPI.fetchCustomerDetail(customerId);
-      const customerData = response;
-      const ordersData = response.orders || [];
+      const customerData = await CustomerAPI.fetchCustomerDetail(customerId);
+      
+      // Try to get orders separately using new REST alias
+      let ordersData: ApiOrder[] = [];
+      try {
+        const { orders } = await CustomerAPI.fetchCustomerOrdersNew(customerId, 50);
+        ordersData = orders;
+        console.log(`📱 CustomerDetailPage: Loaded ${orders.length} orders via REST alias`);
+      } catch (ordersError) {
+        console.warn('📱 CustomerDetailPage: Failed to load orders via REST alias, trying legacy');
+        try {
+          ordersData = await CustomerAPI.fetchCustomerOrders(customerId, 50);
+          console.log(`📱 CustomerDetailPage: Loaded ${ordersData.length} orders via legacy endpoint`);
+        } catch (legacyError) {
+          console.warn('📱 CustomerDetailPage: Both order endpoints failed:', legacyError);
+          ordersData = [];
+        }
+      }
       
       console.log(`📱 CustomerDetailPage: Received customer data:`, customerData);
       console.log(`📱 CustomerDetailPage: Received orders data:`, ordersData);

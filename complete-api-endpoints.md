@@ -1,13 +1,13 @@
 # Полная документация всех API endpoints cvety.kz
 
-**Обновлено**: 2025-09-04  
+**Обновлено**: 2025-09-05  
 **Источники**: Production API + Local Development APIs
 
 ## 🏗️ Архитектура API
 
 ### 1. Production API (https://cvety.kz)
 - **Базовый URL**: `https://cvety.kz/api/v2/`
-- **Авторизация**: `?access_token=ABE7142D-D8AB-76AF-8D6C-2C4FAEA9B144`
+- **Авторизация**: `?access_token=<TOKEN>`; для части эндпоинтов также поддерживается `Authorization: Bearer <TOKEN>`
 - **Формат**: REST API с JSON ответами
 
 ### 2. Local Development APIs
@@ -21,10 +21,12 @@
 
 ### GET /api/v2/products
 **Статус**: ✅ Работает  
-**Описание**: Получение списка всех продуктов
+**Описание**: Получение списка продуктов (витрина/каталог) с фильтрами, поддержка заголовка Authorization: Bearer и X-City.
 
 ```bash
 curl "https://cvety.kz/api/v2/products?type=vitrina&limit=10&access_token=TOKEN"
+# Либо через заголовок авторизации и город
+curl -H "Authorization: Bearer TOKEN" -H "X-City: 2" "https://cvety.kz/api/v2/products?type=catalog&limit=10"
 ```
 
 **Параметры**:
@@ -32,6 +34,13 @@ curl "https://cvety.kz/api/v2/products?type=vitrina&limit=10&access_token=TOKEN"
 - `isAvailable`: boolean
 - `limit`: number (по умолчанию 20, max 100)
 - `offset`: number (по умолчанию 0)
+- `cityId`: number (опционально; также можно через заголовок `X-City`)
+
+**Особенности**:
+- Авторизация: `access_token` в query или `Authorization: Bearer <TOKEN>`
+- Формат даты: поля формируются в ISO 8601 где возможно
+- Цена: строка с символом валюты (например, `"20 000 ₸"`)
+- Система использует Bitrix компонент `catalog.section` и внутренние фильтры магазина
 
 ### GET /api/v2/products/detail
 **Статус**: ✅ Работает  
@@ -40,6 +49,14 @@ curl "https://cvety.kz/api/v2/products?type=vitrina&limit=10&access_token=TOKEN"
 ```bash
 curl "https://cvety.kz/api/v2/products/detail?id=696885&access_token=TOKEN"
 ```
+
+**Ответ (сокращенно)**:
+- `id`, `title`, `image`/`images`
+- `price` (строка `"20 000 ₸"`)
+- `isAvailable`, `isReady`, `type`
+- Доп. свойства: размеры, состав, время сборки (категория `short|medium|long`)
+  
+Примечание: детализация может достраиваться из связанных таблиц (basket/iblock) — часть полей может отсутствовать для некоторых элементов.
 
 ### POST /api/v2/product/create
 **Статус**: ⚠️ Требует настройки  
@@ -79,12 +96,63 @@ curl -X POST "https://cvety.kz/api/v2/product/create?access_token=TOKEN" \
 curl "https://cvety.kz/api/v2/orders?status=accepted&limit=10&access_token=TOKEN"
 ```
 
+**Поля статуса в ответе**:
+- `status_id`: BX‑код (`N`, `PD`, `AP`, `CO`, `DE`, `F`)
+- `status_key`: ключ для фронта (`new`, `paid`, `accepted`, `assembled`, `in-transit`, `completed`)
+- `status_name`: русское имя статуса (например, `"Принят"`)
+
+Пример (сокращено):
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 122598,
+      "number": "122598",
+      "status_id": "DE",
+      "status_key": "in-transit",
+      "status_name": "В пути",
+      "createdAt": "2025-09-05T13:10:52+05:00"
+    }
+  ],
+  "pagination": { "total": 152, "limit": 10, "offset": 0, "hasMore": true }
+}
+```
+
 ### GET /api/v2/orders/detail
 **Статус**: ✅ Работает  
-**Описание**: Детали заказа
+**Описание**: Детали заказа (нормализованный ответ, ISO‑даты, маппинг статусов)
 
 ```bash
 curl "https://cvety.kz/api/v2/orders/detail?id=122578&access_token=TOKEN"
+```
+
+**Ответ (сокращенно)**:
+```json
+{
+  "success": true,
+  "data": {
+    "id": "122578",
+    "number": "122578",
+    "status": "accepted",              // маппинг из BX к фронтовому ключу
+    "createdAt": "2025-09-05T11:28:10+05:00",
+    "selectedProduct": { "image": "https://...", "title": "...", "quantity": 1 },
+    "additionalItems": [ { "image": "https://...", "title": "...", "quantity": 1 } ],
+    "deliveryType": "delivery|pickup",
+    "deliveryAddress": "улица, дом...",
+    "deliveryDate": "today|tomorrow|ISO",
+    "deliveryTime": "12:00-14:00",
+    "deliveryCity": "Алматы",
+    "recipient": { "name": "Иван П.", "phone": "+7..." },
+    "sender": { "name": "Мария К.", "phone": "+7...", "email": "..." },
+    "postcard": "Подпись на открытке",
+    "comment": "Комментарий",
+    "anonymous": false,
+    "payment": { "amount": "20 000 ₸", "status": "paid|unpaid", "method": null },
+    "executor": { "florist": null, "courier": "Имя курьера" },
+    "history": []
+  }
+}
 ```
 
 ### GET /api/v2/order/allowed-statuses
@@ -104,12 +172,32 @@ curl "https://cvety.kz/api/v2/order/allowed-statuses?id=122578&access_token=TOKE
 - `F` - Finished (завершен)
 
 ### POST /api/v2/order/change-status
-**Статус**: ⚠️ Требует проверки  
-**Описание**: Изменение статуса заказа
+**Статус**: ✅ Работает  
+**Описание**: Изменение статуса заказа (принимает `access_token` или `Authorization: Bearer`)
 
 ```bash
 curl -X POST "https://cvety.kz/api/v2/order/change-status?access_token=TOKEN" \
-  --data "id=122578&statusId=AP&comment=Принято"
+  -d "id=122578&statusId=AP&comment=Принято"
+```
+
+**Параметры**:
+- `id`: number — ID заказа (обязателен)
+- `statusId`: string — BX‑код статуса (`N`, `PD`, `AP`, `CO`, `DE`, `F`) (обязателен)
+- `comment`: string — комментарий к смене статуса (опционально)
+
+**Ответ**:
+```json
+{
+  "status": true,
+  "data": {
+    "id": 122578,
+    "oldStatus": "N",
+    "newStatus": "AP",
+    "changed": true,
+    "changedAt": "2025-09-05T13:25:01+05:00"
+  },
+  "timestamp": "2025-09-05T13:25:01+05:00"
+}
 ```
 
 ### DELETE /api/v2/orders/delete
@@ -149,23 +237,103 @@ curl "https://cvety.kz/api/v2/shop/list?access_token=TOKEN"
 
 ### GET /api/v2/customers/
 **Статус**: ✅ Работает  
-**Описание**: Список клиентов с базовой статистикой
+**Описание**: Базовый список клиентов (исторический эндпоинт Bitrix‑роутера). Может иметь отличающиеся форматы дат.
 
 ```bash
-curl "https://cvety.kz/api/v2/customers/?access_token=TOKEN"
-```
-
-### GET /api/v2/customers/orders.php
-**Статус**: ⚠️ Требует CUSTOMER_ID  
-**Описание**: Заказы конкретного клиента
-
-```bash
-curl "https://cvety.kz/api/v2/customers/orders.php?CUSTOMER_ID=171690&access_token=TOKEN"
+curl "https://cvety.kz/api/v2/customers/?limit=20&offset=0&access_token=TOKEN"
 ```
 
 ### GET /api/v2/customers/with-stats/
-**Статус**: ❌ 500 Internal Server Error  
-**Проблема**: Отсутствует файл index.php
+**Статус**: ✅ Работает (оптимизировано)  
+**Описание**: Список клиентов с агрегированной статистикой (2‑шаговая агрегация + кэш 5 минут). Поддерживает page/limit, keyset‑пагинацию и быстрый total.
+
+```bash
+# Страница 1 (page/limit)
+curl "https://cvety.kz/api/v2/customers/with-stats/?page=1&limit=20&access_token=TOKEN"
+
+# Keyset‑страница (после указанного ID)
+curl "https://cvety.kz/api/v2/customers/with-stats/?after_id=171700&limit=20&access_token=TOKEN"
+
+# Вернуть общий total (кэш 1 час)
+curl "https://cvety.kz/api/v2/customers/with-stats/?page=1&limit=20&total=true&access_token=TOKEN"
+```
+
+**Параметры**:
+- `page`: number (>=1)
+- `limit`: number (1..100)
+- `after_id`: number — ID клиента, после которого возвращать следующую страницу (альтернатива page/offset)
+- `only_with_orders`: boolean — только клиенты с заказами
+- `total`: boolean — вернуть `pagination.total` (подсчитан и закэширован на 1 час)
+
+**Ответ**:
+```json
+{
+  "success": true,
+  "status": true,
+  "data": {
+    "customers": [
+      {
+        "id": 171700,
+        "login": "77770550772@cvety.kz",
+        "name": "Unknown",
+        "original_name": "Unknown",
+        "last_name": "",
+        "email": "77770550772@cvety.kz",
+        "phone": "+77770550772",
+        "member_since": "2025-09-05T05:07:48+05:00",
+        "total_orders": 1,
+        "completed_orders": 1,
+        "pending_orders": 0,
+        "total_spent": 9500,
+        "average_check": 9500,
+        "last_order_date": "2025-09-05T05:07:48+05:00",
+        "status": "active"
+      }
+    ],
+    "pagination": {
+      "total": 107555,          
+      "page": 1,                 
+      "limit": 20,
+      "pages": 2,                
+      "next_after_id": 171697    
+    },
+    "filters": { "only_with_orders": false }
+  }
+}
+```
+
+### GET /api/v2/customers/{id}
+**Статус**: ✅ Работает  
+**Описание**: Детали клиента. Текущая реализация возвращает заказы внутри `data.orders` (даже без `include`), форматы дат могут отличаться от ISO.
+
+```bash
+curl "https://cvety.kz/api/v2/customers/171690?access_token=TOKEN"
+```
+
+### GET /api/v2/customers/{id}/orders
+**Статус**: ✅ Работает (REST‑алиас)  
+**Описание**: Заказы клиента с пагинацией и нормализованными полями.
+
+```bash
+curl "https://cvety.kz/api/v2/customers/171690/orders?page=1&limit=20&access_token=TOKEN"
+```
+
+**Параметры**:
+- `page`: number (>=1)
+- `limit`: number (1..100)
+- `status`: string (BX‑код, опционально)
+
+**Ответ**:
+```json
+{
+  "success": true,
+  "status": true,
+  "data": [
+    { "id": 122576, "date": "2025-09-04T11:28:10+05:00", "total": 9500, "currency": "KZT", "status_id": "F" }
+  ],
+  "pagination": { "total": 1, "page": 1, "limit": 20, "pages": 1 }
+}
+```
 
 ---
 
@@ -308,104 +476,85 @@ curl -X POST "https://cvety.kz/api/v2/uploads/images?access_token=TOKEN" \
 
 ---
 
-## 📦 ИНВЕНТАРЬ (Inventory) - Local Python API ✅
+## 📦 ИНВЕНТАРЬ (Inventory) - Production ✅
 
-**Базовый URL**: `localhost:8001` (FastAPI)  
-**База данных**: Supabase
+### GET /api/v2/inventory
+**Статус**: ✅ Работает  
+**Описание**: Список складских позиций магазина (по умолчанию 17008), поиск и фильтры.
 
-### 🌸 Управление цветами
-
-#### GET /crm/inventory
-**Статус**: ✅ Работает локально  
-**Описание**: Страница управления инвентарем цветов
+```bash
+curl "https://cvety.kz/api/v2/inventory/?limit=20&offset=0&access_token=TOKEN"
+curl -H "Authorization: Bearer TOKEN" "https://cvety.kz/api/v2/inventory/?search=роза&limit=20"
+```
 
 **Параметры**:
-- `search`: string - поиск по названию
-- `page`: number - номер страницы
+- `limit`: number (1..100)
+- `offset`: number (>=0)
+- `search` | `q`: string — поиск по имени/локации/цветку
+- `service`: boolean — услуги (true) / товары (false)
+- `active`: boolean — только активные
+- `shopId`: number — магазин (по умолчанию 17008)
+- `cityId` | заголовок `X-City`: number — город
 
-#### POST /api/inventory/update
-**Статус**: ✅ Работает локально  
-**Описание**: Обновление количества одного товара
-
-```json
-{
-  "product_id": "123",
-  "quantity": 10,
-  "note": "Пополнение склада"
-}
-```
-
-#### POST /api/inventory/bulk-update
-**Статус**: ✅ Работает локально  
-**Описание**: Массовое обновление количества
-
-```json
-{
-  "updates": [
-    {"product_id": "123", "quantity": 15},
-    {"product_id": "124", "quantity": 8}
-  ]
-}
-```
-
-#### GET /api/inventory/low-stock
-**Статус**: ✅ Работает локально  
-**Описание**: Товары с низким остатком
-
-**Параметры**:
-- `threshold`: number (по умолчанию 5) - порог низкого остатка
-
-#### POST /api/inventory/delivery
-**Статус**: ✅ Работает локально  
-**Описание**: Добавление поставки товаров
-
-```json
-{
-  "flower_id": "rose-red",
-  "quantity": 50,
-  "supplier": "Поставщик роз",
-  "price": 150,
-  "note": "Еженедельная поставка"
-}
-```
-
-#### POST /api/inventory/writeoff
-**Статус**: ✅ Работает локально  
-**Описание**: Списание товаров со склада
-
-```json
-{
-  "flower_id": "rose-red",
-  "quantity": 5,
-  "reason": "Увядшие цветы",
-  "note": "Не проданы в срок"
-}
-```
-
-#### GET /api/inventory/history
-**Статус**: ✅ Работает локально  
-**Описание**: История движения товаров
-
-**Параметры**:
-- `flower_id`: string (optional) - конкретный цветок
-- `limit`: number (по умолчанию 50)
-
-**Ответ**:
+**Ответ (сокращенно)**:
 ```json
 {
   "success": true,
   "data": [
     {
-      "id": "mov_123",
-      "flower_id": "rose-red",
-      "flower_name": "Роза красная",
-      "movement_type": "delivery",
-      "quantity": 50,
-      "reason": "Поставка от поставщика",
-      "created_at": "2025-09-04T10:00:00Z"
+      "id": 123,
+      "name": "Лента",
+      "cost": 150,
+      "quantity": 20,
+      "markup": 0,
+      "location": "Склад-1",
+      "image": "https://cvety.kz/upload/...",
+      "images": ["https://cvety.kz/upload/..."],
+      "service": false,
+      "flower": "rose-red",
+      "deactivate": false
     }
-  ]
+  ],
+  "pagination": { "total": 250, "limit": 20, "offset": 0, "hasMore": true }
 }
+```
+
+### GET /api/v2/inventory/item
+**Статус**: ✅ Работает  
+**Описание**: Получение позиции по `id`.
+
+```bash
+curl "https://cvety.kz/api/v2/inventory/item?id=123&access_token=TOKEN"
+```
+
+### POST /api/v2/inventory/create
+**Статус**: ✅ Работает  
+**Описание**: Создание новой позиции (multipart/form-data для изображений).
+
+```bash
+curl -X POST -H "Authorization: Bearer TOKEN" \
+  -F "name=Лента" -F "quantity=10" -F "cost=150" \
+  -F "images[]=@/path/to/photo.jpg" \
+  "https://cvety.kz/api/v2/inventory/create"
+```
+
+### POST /api/v2/inventory/update
+**Статус**: ✅ Работает  
+**Описание**: Обновление позиции (поддержка файлов `images[]`, флаги service/deleteImage, shopId).
+
+```bash
+curl -X POST -H "Authorization: Bearer TOKEN" \
+  -F "id=123" -F "name=Лента узкая" -F "quantity=12" -F "cost=140" \
+  -F "deleteImage=true" \
+  "https://cvety.kz/api/v2/inventory/update"
+```
+
+### GET /api/v2/inventory/history
+**Статус**: ✅ Работает  
+**Описание**: История движений по складу (store, shopId), с пагинацией.
+
+```bash
+curl -H "Authorization: Bearer TOKEN" "https://cvety.kz/api/v2/inventory/history?limit=50&offset=0&shopId=17008"
 ```
 
 ### 🌺 Управление цветами (Flowers API)

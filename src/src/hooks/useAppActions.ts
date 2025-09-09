@@ -1,5 +1,4 @@
 import { Order, Customer } from '../types';
-import { toggleProductActive } from '../../api/products';
 
 interface UseAppActionsProps {
   setCurrentScreen: (screen: any) => void;
@@ -75,34 +74,14 @@ export function useAppActions({
   };
 
   // Product actions
-  const toggleProductStatus = async (id: number) => {
-    // Find current product status
-    const product = products.find(p => p.id === id);
-    if (!product) return;
-    
-    try {
-      // Optimistically update the UI
-      setProducts(prev => 
-        prev.map(product => 
-          product.id === id 
-            ? { ...product, isAvailable: !product.isAvailable }
-            : product
-        )
-      );
-      
-      // Call API to update on server
-      await toggleProductActive(id, !product.isAvailable);
-    } catch (error) {
-      console.error('Failed to toggle product status:', error);
-      // Revert the optimistic update on error
-      setProducts(prev => 
-        prev.map(p => 
-          p.id === id 
-            ? { ...p, isAvailable: product.isAvailable }
-            : p
-        )
-      );
-    }
+  const toggleProductStatus = (id: number) => {
+    setProducts(prev => 
+      prev.map(product => 
+        product.id === id 
+          ? { ...product, isAvailable: !product.isAvailable }
+          : product
+      )
+    );
   };
 
   const updateProduct = (updatedProduct: any) => {
