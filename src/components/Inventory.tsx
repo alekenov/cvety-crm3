@@ -3,9 +3,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Plus, Search, Package, Clipboard, X } from "lucide-react";
 import { toast } from "sonner";
-// API imports
-import { fetchInventoryItems, categorizeInventoryItem, formatInventoryPrice } from "../api/inventory";
-import type { InventoryItemDTO } from "../api/inventory";
+import { useInventory } from "@/shared/hooks/useInventory";
 import { urlManager } from "../src/utils/url";
 // Temporary inline components to avoid import issues
 
@@ -80,89 +78,8 @@ function PageHeader({ title, subtitle, onBack, actions }: {
   );
 }
 
-interface InventoryItem {
-  id: number;
-  name: string;
-  category: 'flowers' | 'greenery' | 'accessories';
-  price: string; // за единицу
-  unit: string; // штука, грамм, метр
-  quantity: number; // текущий остаток
-  lastDelivery: Date;
-  image: string;
-}
-
-const mockInventoryItems: InventoryItem[] = [
-  {
-    id: 1,
-    name: "Розы красные",
-    category: 'flowers',
-    price: "450 ₸",
-    unit: "шт",
-    quantity: 85,
-    lastDelivery: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-    image: "https://images.unsplash.com/photo-1518895949257-7621c3c786d7?w=100&h=100&fit=crop"
-  },
-  {
-    id: 2,
-    name: "Тюльпаны белые",
-    category: 'flowers',
-    price: "320 ₸",
-    unit: "шт",
-    quantity: 12,
-    lastDelivery: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
-    image: "https://images.unsplash.com/photo-1582794543139-8ac9cb0f7b11?w=100&h=100&fit=crop"
-  },
-  {
-    id: 3,
-    name: "Лилии розовые",
-    category: 'flowers',
-    price: "650 ₸",
-    unit: "шт",
-    quantity: 24,
-    lastDelivery: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
-    image: "https://images.unsplash.com/photo-1565011523534-747a8601f1a4?w=100&h=100&fit=crop"
-  },
-  {
-    id: 4,
-    name: "Эвкалипт",
-    category: 'greenery',
-    price: "180 ₸",
-    unit: "ветка",
-    quantity: 45,
-    lastDelivery: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000),
-    image: "https://images.unsplash.com/photo-1586744687037-b4f9c5d1fcd8?w=100&h=100&fit=crop"
-  },
-  {
-    id: 5,
-    name: "Хризантемы желтые",
-    category: 'flowers',
-    price: "280 ₸",
-    unit: "шт",
-    quantity: 8,
-    lastDelivery: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
-    image: "https://images.unsplash.com/photo-1572731973537-34afe46c4bc6?w=100&h=100&fit=crop"
-  },
-  {
-    id: 6,
-    name: "Лента атласная",
-    category: 'accessories',
-    price: "25 ₸",
-    unit: "метр",
-    quantity: 150,
-    lastDelivery: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-    image: "https://images.unsplash.com/photo-1513475382585-d06e58bcb0e0?w=100&h=100&fit=crop"
-  },
-  {
-    id: 7,
-    name: "Гипсофила",
-    category: 'flowers',
-    price: "120 ₸",
-    unit: "ветка",
-    quantity: 3,
-    lastDelivery: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
-    image: "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=100&h=100&fit=crop"
-  }
-];
+// Import the InventoryItem type from the hook
+import type { InventoryItem } from "@/shared/hooks/useInventory";
 
 function getTimeAgo(date: Date): string {
   const now = new Date();
@@ -262,52 +179,14 @@ export function Inventory({ onAddItem, onViewItem, onStartAudit }: InventoryProp
   const params = urlManager.getParams();
   const initialFilter = (['all','flowers','greenery','accessories'] as const).includes((params.filter as any)) ? (params.filter as any) : 'all';
   const [filter, setFilter] = useState<'all' | 'flowers' | 'greenery' | 'accessories'>(initialFilter);
-  const [items, setItems] = useState<InventoryItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState(params.search || '');
   const [isSearchOpen, setIsSearchOpen] = useState(!!params.search);
 
-  // Load inventory items from API
-  useEffect(() => {
-    const loadInventoryItems = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        
-        const response = await fetchInventoryItems({
-          limit: 100, // Load more items
-          offset: 0
-        });
-        
-        if (response.success && response.data) {
-          // Transform API data to component format
-          const transformedItems: InventoryItem[] = response.data.map((dto: InventoryItemDTO) => ({
-            id: dto.id,
-            name: dto.name,
-            category: categorizeInventoryItem(dto),
-            price: formatInventoryPrice(dto.cost),
-            unit: dto.service ? 'услуга' : 'шт', // Default unit, could be enhanced
-            quantity: dto.quantity,
-            lastDelivery: new Date(Date.now() - Math.random() * 10 * 24 * 60 * 60 * 1000), // Random delivery date for now
-            image: dto.image || "https://images.unsplash.com/photo-1518895949257-7621c3c786d7?w=100&h=100&fit=crop" // Default image
-          }));
-          
-          setItems(transformedItems);
-        } else {
-          setError('Не удалось загрузить товары склада');
-        }
-      } catch (err) {
-        console.error('Error loading inventory items:', err);
-        setError('Ошибка при загрузке данных склада');
-        toast.error('Не удалось загрузить данные склада');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadInventoryItems();
-  }, []);
+  // Use React Query hook for data fetching
+  const { data, isLoading, error, refetch } = useInventory();
+  
+  // Extract items from React Query data
+  const allItems = data?.items || [];
 
   // Функция поиска товаров на складе
   const searchItems = (items: InventoryItem[], query: string) => {
@@ -322,7 +201,7 @@ export function Inventory({ onAddItem, onViewItem, onStartAudit }: InventoryProp
     });
   };
 
-  let filteredItems = items.filter(item => {
+  let filteredItems = allItems.filter(item => {
     if (filter === 'all') return true;
     return item.category === filter;
   });
@@ -373,11 +252,11 @@ export function Inventory({ onAddItem, onViewItem, onStartAudit }: InventoryProp
   }, []);
 
   const counts = useMemo(() => ({
-    all: items.length,
-    flowers: items.filter(i => i.category === 'flowers').length,
-    greenery: items.filter(i => i.category === 'greenery').length,
-    accessories: items.filter(i => i.category === 'accessories').length,
-  }), [items]);
+    all: allItems.length,
+    flowers: allItems.filter(i => i.category === 'flowers').length,
+    greenery: allItems.filter(i => i.category === 'greenery').length,
+    accessories: allItems.filter(i => i.category === 'accessories').length,
+  }), [allItems]);
 
   const filterOptions = [
     { key: 'all', label: 'Все', count: counts.all },
@@ -418,13 +297,15 @@ export function Inventory({ onAddItem, onViewItem, onStartAudit }: InventoryProp
   }
 
   // Show error state
-  if (error) {
+  if (error && filteredItems.length === 0) {
     return (
       <div className="bg-white min-h-screen">
         <PageHeader title="Склад" actions={headerActions} />
         <div className="flex flex-col items-center justify-center py-20 px-6">
-          <div className="text-red-500 text-center mb-4">{error}</div>
-          <Button onClick={() => window.location.reload()}>Попробовать снова</Button>
+          <div className="text-red-500 text-center mb-4">
+            {error instanceof Error ? error.message : 'Не удалось загрузить данные склада'}
+          </div>
+          <Button onClick={() => refetch()}>Попробовать снова</Button>
         </div>
       </div>
     );

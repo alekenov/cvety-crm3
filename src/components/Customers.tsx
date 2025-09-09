@@ -10,7 +10,7 @@ import { Input } from "./ui/input";
 // Import extracted components
 import { CustomerItem } from "./customers/CustomerItem";
 import { CustomerStats } from "./customers/CustomerStats";
-import { useCustomers } from "./customers/hooks/useCustomers";
+import { useCustomers } from "@/shared/hooks/useCustomers";
 import { urlManager } from "../src/utils/url";
 
 // Import shared components - using existing inline components for now
@@ -83,19 +83,59 @@ interface CustomersProps {
 
 export function Customers({ onViewCustomer, onAddCustomer, customers: propCustomers }: CustomersProps) {
   const navigate = useNavigate();
-  const {
-    customers,
-    loading,
-    error,
-    searchQuery,
-    setSearchQuery,
-    activeFilter,
-    setActiveFilter,
-    stats,
-    filterTabs,
-    refreshCustomers
-  } = useCustomers();
+  const { data, isLoading, error, refetch } = useCustomers();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState('all');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  // Extract customers from React Query data
+  const allCustomers = data?.customers || [];
+  const loading = isLoading;
+
+  // Client-side filtering (same logic as before)
+  const filteredCustomers = allCustomers.filter(customer => {
+    // Apply search filter
+    const matchesSearch = searchQuery === '' || 
+      customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      customer.phone.includes(searchQuery);
+    
+    // Apply status filter
+    let matchesFilter = true;
+    switch (activeFilter) {
+      case 'active':
+        matchesFilter = customer.status === 'active';
+        break;
+      case 'vip':
+        matchesFilter = customer.status === 'vip';
+        break;
+      case 'inactive':
+        matchesFilter = customer.status === 'inactive';
+        break;
+      default:
+        matchesFilter = true;
+    }
+    
+    return matchesSearch && matchesFilter;
+  });
+
+  // Calculate statistics
+  const stats = {
+    total: allCustomers.length,
+    vip: allCustomers.filter(c => c.status === 'vip').length,
+    active: allCustomers.filter(c => c.status === 'active').length,
+    inactive: allCustomers.filter(c => c.status === 'inactive').length
+  };
+
+  // Generate filter tabs with counts
+  const filterTabs = [
+    { key: 'all', label: 'Все', count: stats.total },
+    { key: 'active', label: 'Активные', count: stats.active },
+    { key: 'vip', label: 'VIP', count: stats.vip },
+    { key: 'inactive', label: 'Неактивные', count: stats.inactive }
+  ];
+
+  // Use filtered customers for display
+  const customers = filteredCustomers;
 
   // Initialize from URL
   useEffect(() => {
@@ -159,8 +199,10 @@ export function Customers({ onViewCustomer, onAddCustomer, customers: propCustom
     return (
       <div className="bg-white min-h-screen max-w-md mx-auto flex items-center justify-center">
         <div className="text-center px-4">
-          <p className="text-red-600 mb-4">{error}</p>
-          <Button onClick={refreshCustomers} variant="outline">
+          <p className="text-red-600 mb-4">
+            {error instanceof Error ? error.message : 'Не удалось загрузить клиентов'}
+          </p>
+          <Button onClick={() => refetch()} variant="outline">
             Попробовать снова
           </Button>
         </div>
