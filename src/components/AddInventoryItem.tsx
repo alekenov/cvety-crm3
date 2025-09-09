@@ -4,7 +4,7 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { useAppContext } from "../src/contexts/AppContext";
-import { searchInventoryItems } from "../api/inventory";
+import { searchInventoryItems, createInventorySupply } from "../api/inventory";
 import type { InventoryItem } from "../src/types";
 
 interface SupplyItem {
@@ -161,9 +161,15 @@ export function AddInventoryItem({ onClose, onProcessSupply }: AddInventoryItemP
 
     try {
       // Обработка поставки
-      if (onProcessSupply) {
-        onProcessSupply(validItems);
-      }
+      const payload = validItems.map(item => ({
+        name: item.name.trim(),
+        quantity: parseInt(item.quantity),
+        price: parseFloat(item.price),
+        existingItemId: item.existingItem?.id as any
+      }));
+
+      await createInventorySupply(payload);
+      onProcessSupply?.(validItems);
 
       // Логирование для демонстрации
       validItems.forEach(item => {

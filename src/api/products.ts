@@ -1,3 +1,6 @@
+import { apiClient, ApiResponse } from '@/shared/api/client';
+
+// Legacy import for backward compatibility during migration  
 import { api } from './client';
 
 export interface ProductDTO {

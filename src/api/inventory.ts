@@ -1,5 +1,8 @@
 import { api } from './client';
 
+const INVENTORY_TRANSACTIONS_PATH = import.meta.env.VITE_INVENTORY_TRANSACTIONS_PATH || '/api/v2/inventory/transactions';
+const INVENTORY_SUPPLY_PATH = import.meta.env.VITE_INVENTORY_SUPPLY_PATH || '/api/v2/inventory/supply';
+
 export interface InventoryItemDTO {
   id: number;
   name: string;
@@ -72,6 +75,14 @@ export async function fetchInventoryItem(id: number): Promise<InventoryItemDTO> 
     console.error('Error fetching inventory item:', error);
     throw error;
   }
+}
+
+// Update single inventory item
+export async function updateInventoryItem(id: number, updates: Partial<Pick<InventoryItemDTO, 'cost'|'markup'|'quantity'|'name'|'location'|'flower'>>): Promise<{ success: boolean }>
+{
+  const res = await api(`/api/v2/inventory/update/`, { method: 'POST', body: { id, ...updates } });
+  if (res?.success === true || res?.status === true) return { success: true };
+  return { success: false };
 }
 
 export async function searchInventoryItems(query: string, limit: number = 10): Promise<InventoryItemDTO[]> {
@@ -220,5 +231,47 @@ export async function fetchInventoryHistory(itemId: number, params: {
   } catch (error) {
     console.error('Error fetching inventory history:', error);
     return null;
+  }
+}
+
+// Create an inventory transaction (consumption/writeOff/adjustment)
+// No dedicated transactions endpoint in prod; emulate by updating quantity via update endpoint
+export async function createInventoryTransaction(itemId: number, payload: { type: 'consumption' | 'adjustment' | 'waste'; quantity: number; comment?: string; }): Promise<{ success: boolean }>{
+  // For waste/consumption we decrease quantity by the given amount
+  // Fetch current item list and find target (best-effort)
+  try {
+    const list = await fetchInventoryItems({ limit: 200, offset: 0 });
+    const found = list.data.find(i => i.id === itemId);
+    if (!found) return { success: false };
+    const newQty = Math.max(0, (found.quantity || 0) - Math.abs(payload.quantity));
+    const res = await updateInventoryItem(itemId, { quantity: newQty });
+    return res;
+  } catch {
+    return { success: false };
+  }
+}
+
+// Create inventory supply (bulk acceptance)
+export async function createInventorySupply(items: Array<{ name: string; quantity: number; price: number; existingItemId?: number }>): Promise<{ success: boolean }>{
+  // Prod API exposes single-item create at /api/v2/inventory/create/
+  try {
+    for (const it of items) {
+      const body: any = {
+        name: it.name,
+        cost: it.price,
+        quantity: it.quantity,
+        markup: 0,
+        location: '',
+        flower: '',
+        service: 'N',
+      };
+      const res = await api('/api/v2/inventory/create/', { method: 'POST', body });
+      if (!(res?.success === true || res?.status === true)) {
+        return { success: false };
+      }
+    }
+    return { success: true };
+  } catch {
+    return { success: false };
   }
 }

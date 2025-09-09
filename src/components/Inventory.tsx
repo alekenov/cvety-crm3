@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Plus, Search, Package, Clipboard, X } from "lucide-react";
@@ -6,6 +6,7 @@ import { toast } from "sonner";
 // API imports
 import { fetchInventoryItems, categorizeInventoryItem, formatInventoryPrice } from "../api/inventory";
 import type { InventoryItemDTO } from "../api/inventory";
+import { urlManager } from "../src/utils/url";
 // Temporary inline components to avoid import issues
 
 function FilterTabs({ tabs, activeTab, onTabChange }: { 
@@ -19,14 +20,18 @@ function FilterTabs({ tabs, activeTab, onTabChange }: {
         <button
           key={tab.key}
           onClick={() => onTabChange(tab.key)}
-          className={`px-3 py-1 rounded text-sm transition-colors ${
+          className={`px-3 py-1 rounded text-sm transition-colors flex items-center gap-2 ${
             activeTab === tab.key
               ? 'bg-primary text-primary-foreground'
               : 'bg-gray-100 text-gray-700'
           }`}
         >
-          {tab.label}
-          {tab.count !== undefined && ` (${tab.count})`}
+          <span>{tab.label}</span>
+          {tab.count !== undefined && (
+            <span className={`${activeTab === tab.key ? 'bg-white/20 text-primary-foreground' : 'bg-white text-gray-600'} px-1.5 py-0.5 rounded text-xs leading-none`}>
+              {tab.count}
+            </span>
+          )}
         </button>
       ))}
     </div>
@@ -254,12 +259,14 @@ interface InventoryProps {
 }
 
 export function Inventory({ onAddItem, onViewItem, onStartAudit }: InventoryProps) {
-  const [filter, setFilter] = useState<'all' | 'flowers' | 'greenery' | 'accessories'>('all');
+  const params = urlManager.getParams();
+  const initialFilter = (['all','flowers','greenery','accessories'] as const).includes((params.filter as any)) ? (params.filter as any) : 'all';
+  const [filter, setFilter] = useState<'all' | 'flowers' | 'greenery' | 'accessories'>(initialFilter);
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState(params.search || '');
+  const [isSearchOpen, setIsSearchOpen] = useState(!!params.search);
 
   // Load inventory items from API
   useEffect(() => {
@@ -346,11 +353,37 @@ export function Inventory({ onAddItem, onViewItem, onStartAudit }: InventoryProp
     setIsSearchOpen(false);
   };
 
+  // Sync state with URL and listen to history (without redundant tab parameter)
+  useEffect(() => {
+    urlManager.updateParams({ filter: filter === 'all' ? null : filter }, true);
+  }, [filter]);
+  useEffect(() => {
+    urlManager.updateParams({ search: searchQuery || null }, true);
+  }, [searchQuery]);
+  useEffect(() => {
+    const onPop = () => {
+      const p = urlManager.getParams();
+      setSearchQuery(p.search || '');
+      setIsSearchOpen(!!p.search);
+      const allowed = ['all','flowers','greenery','accessories'];
+      setFilter((allowed.includes(p.filter || '') ? (p.filter as any) : 'all'));
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  const counts = useMemo(() => ({
+    all: items.length,
+    flowers: items.filter(i => i.category === 'flowers').length,
+    greenery: items.filter(i => i.category === 'greenery').length,
+    accessories: items.filter(i => i.category === 'accessories').length,
+  }), [items]);
+
   const filterOptions = [
-    { key: 'all', label: 'Все' },
-    { key: 'flowers', label: 'Цветы' },
-    { key: 'greenery', label: 'Зелень' },
-    { key: 'accessories', label: 'Аксессуары' }
+    { key: 'all', label: 'Все', count: counts.all },
+    { key: 'flowers', label: 'Цветы', count: counts.flowers },
+    { key: 'greenery', label: 'Зелень', count: counts.greenery },
+    { key: 'accessories', label: 'Аксессуары', count: counts.accessories }
   ];
 
   const headerActions = (

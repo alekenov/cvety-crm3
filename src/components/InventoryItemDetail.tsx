@@ -5,7 +5,8 @@ import { Label } from "./ui/label";
 import { Badge } from "./ui/badge";
 import { Separator } from "./ui/separator";
 import { ArrowLeft, Minus, Plus, Calendar, Package, Loader2 } from "lucide-react";
-import { fetchInventoryItemById, fetchInventoryHistory, categorizeInventoryItem, formatInventoryPrice } from "../api/inventory";
+import { fetchInventoryItemById, fetchInventoryHistory, categorizeInventoryItem, formatInventoryPrice, updateInventoryItem, createInventoryTransaction } from "../api/inventory";
+import { toast } from "sonner";
 import type { InventoryItemDTO, InventoryHistoryItem } from "../api/inventory";
 
 interface InventoryTransaction {
@@ -190,12 +191,16 @@ export function InventoryItemDetail({ itemId, onClose, onUpdateItem }: Inventory
     }) : null);
     setIsEditing(false);
     
-    if (onUpdateItem) {
-      onUpdateItem(itemId, {
-        cost: cost,
-        markup: newMarkup
-      });
-    }
+    updateInventoryItem(itemId, { cost, markup: newMarkup })
+      .then((res) => {
+        if (res.success) {
+          toast.success('Цены обновлены');
+          onUpdateItem?.(itemId, { cost, markup: newMarkup });
+        } else {
+          toast.error('Не удалось сохранить цены');
+        }
+      })
+      .catch(() => toast.error('Ошибка при сохранении цен'));
   };
 
   const handleWriteOff = () => {
@@ -224,10 +229,16 @@ export function InventoryItemDetail({ itemId, onClose, onUpdateItem }: Inventory
       setShowWriteOff(false);
 
       console.log('Write off transaction:', newTransaction);
-      
-      if (onUpdateItem) {
-        onUpdateItem(itemId, { quantity: item.quantity - quantity });
-      }
+      createInventoryTransaction(itemId, { type: 'waste', quantity, comment: writeOffComment })
+        .then((res) => {
+          if (res.success) {
+            toast.success('Списание создано');
+            onUpdateItem?.(itemId, { quantity: item.quantity - quantity });
+          } else {
+            toast.error('Не удалось создать списание');
+          }
+        })
+        .catch(() => toast.error('Ошибка при списании'));
     }
   };
 
