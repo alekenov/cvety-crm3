@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense, lazy } from "react";
 import { Plus, Search } from "lucide-react";
 import { Button } from "./components/ui/button";
 import { Switch } from "./components/ui/switch";
@@ -6,20 +6,20 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Toaster } from "./components/ui/sonner";
 
 // Centralized imports
-import { Screen } from "@core/types";
-import { useAppContext } from "@core/contexts/AppContext";
-import { useAppActions } from "@core/hooks/useAppActions";
+import { Screen } from "@/src/types";
+import { useAppContext } from "@/src/contexts/AppContext";
+import { useAppActions } from "@/src/hooks/useAppActions";
 
 // Import types
-import { Product } from "@core/types";
-import { getTimeAgo } from "@core/utils/date";
+import { Product } from "@/src/types";
+import { getTimeAgo } from "@/src/utils/date";
 
 // Import API methods
 import { fetchProducts, toggleProductActive, fetchProductDetail } from "./api/products";
 import type { ProductDTO } from "./api/products";
 
 // Import design system components
-import { FilterTabs, EmptyState, PageHeader } from "@core/components";
+import { FilterTabs, EmptyState, PageHeader } from "@/src/components";
 
 
 function ProductItem({ id, image, title, price, isAvailable, createdAt, onToggle, onView }: Product & {
@@ -74,26 +74,29 @@ function ProductItem({ id, image, title, price, isAvailable, createdAt, onToggle
   );
 }
 
-// Component imports
-import { ProductTypeSelector } from "./components/ProductTypeSelector";
-import { AddProductForm } from "./components/AddProductForm";
-import { AddCatalogForm } from "./components/AddCatalogForm";
-import { ProductDetail } from "./components/ProductDetail";
-import { EditCatalogForm } from "./components/EditCatalogForm";
-import OrdersList from "./components/OrdersList";
-import { Dashboard } from "./components/Dashboard";
+// Lazy-loaded components for better code splitting
+const ProductTypeSelector = lazy(() => import("./components/ProductTypeSelector").then(m => ({ default: m.ProductTypeSelector })));
+const AddProductForm = lazy(() => import("./components/AddProductForm").then(m => ({ default: m.AddProductForm })));
+const AddCatalogForm = lazy(() => import("./components/AddCatalogForm").then(m => ({ default: m.AddCatalogForm })));
+const ProductDetail = lazy(() => import("./components/ProductDetail").then(m => ({ default: m.ProductDetail })));
+const EditCatalogForm = lazy(() => import("./components/EditCatalogForm").then(m => ({ default: m.EditCatalogForm })));
+const OrdersList = lazy(() => import("./components/OrdersList"));
+const Dashboard = lazy(() => import("./components/Dashboard").then(m => ({ default: m.Dashboard })));
+const OrderDetail = lazy(() => import("./components/OrderDetail").then(m => ({ default: m.OrderDetail })));
+const AddOrder = lazy(() => import("./components/AddOrder").then(m => ({ default: m.AddOrder })));
+const Inventory = lazy(() => import("./components/Inventory").then(m => ({ default: m.Inventory })));
+const InventoryItemDetail = lazy(() => import("./components/InventoryItemDetail").then(m => ({ default: m.InventoryItemDetail })));
+const InventoryAudit = lazy(() => import("./components/InventoryAudit").then(m => ({ default: m.InventoryAudit })));
+const AddInventoryItem = lazy(() => import("./components/AddInventoryItem").then(m => ({ default: m.AddInventoryItem })));
+const Customers = lazy(() => import("./components/Customers").then(m => ({ default: m.Customers })));
+const CustomerDetail = lazy(() => import("./components/CustomerDetail").then(m => ({ default: m.CustomerDetail })));
+const AddCustomer = lazy(() => import("./components/AddCustomer").then(m => ({ default: m.AddCustomer })));
+const Profile = lazy(() => import("./components/Profile").then(m => ({ default: m.Profile })));
+const ProductsListWrapper = lazy(() => import("./components/ProductsListWrapper"));
+
+// Keep MainTabView as regular import since it's always needed
 import { MainTabView } from "./components/MainTabView";
-import { OrderDetail } from "./components/OrderDetail";
-import { AddOrder } from "./components/AddOrder";
-import { Inventory } from "./components/Inventory";
-import { InventoryItemDetail } from "./components/InventoryItemDetail";
-import { InventoryAudit } from "./components/InventoryAudit";
-import { AddInventoryItem } from "./components/AddInventoryItem";
-import { Customers } from "./components/Customers";
-import { CustomerDetail } from "./components/CustomerDetail";
-import { AddCustomer } from "./components/AddCustomer";
-import { Profile } from "./components/Profile";
-import ProductsListWrapper from "./components/ProductsListWrapper";
+import { LoadingSpinner } from "./components/LoadingSpinner";
 
 
 
@@ -143,12 +146,13 @@ export default function App() {
   const handleSetActiveTab = (tab: 'orders' | 'products' | 'inventory' | 'customers' | 'profile') => {
     const routeMap = {
       'orders': '/orders',
-      'products': '/products',
+      'products': '/products', 
       'inventory': '/inventory',
       'customers': '/customers',
       'profile': '/profile'
     };
-    navigate(routeMap[tab]);
+    // Navigate without any query parameters to keep URLs clean
+    navigate(routeMap[tab], { replace: false });
   };
 
   const actions = useAppActions({
@@ -175,135 +179,167 @@ export default function App() {
     case 'selector':
       return (
         <>
-        <ProductTypeSelector 
-          onClose={actions.handleCloseToList}
-          onSelectVitrina={actions.handleSelectVitrina}
-          onSelectCatalog={actions.handleSelectCatalog}
-        />
+        <Suspense fallback={<LoadingSpinner message="Загрузка селектора типа..." />}>
+          <ProductTypeSelector 
+            onClose={actions.handleCloseToList}
+            onSelectVitrina={actions.handleSelectVitrina}
+            onSelectCatalog={actions.handleSelectCatalog}
+          />
+        </Suspense>
         <Toaster position="top-center" />
         </>
       );
     case 'vitrina-form':
-      return <>
-        <AddProductForm onClose={actions.handleCloseToList} />
+      return (
+        <>
+        <Suspense fallback={<LoadingSpinner message="Загрузка формы товара..." />}>
+          <AddProductForm onClose={actions.handleCloseToList} />
+        </Suspense>
         <Toaster position="top-center" />
-      </>;
+        </>
+      );
     case 'catalog-form':
-      return <>
-        <AddCatalogForm onClose={actions.handleCloseToList} />
+      return (
+        <>
+        <Suspense fallback={<LoadingSpinner message="Загрузка формы каталога..." />}>
+          <AddCatalogForm onClose={actions.handleCloseToList} />
+        </Suspense>
         <Toaster position="top-center" />
-      </>;
+        </>
+      );
     case 'product-detail':
       return (
         <>
-        <ProductDetail 
-          productId={state.selectedProductId} 
-          products={state.products}
-          onClose={actions.handleCloseToList} 
-          onUpdateProduct={actions.updateProduct}
-          onEditProduct={actions.handleEditProduct}
-        />
+        <Suspense fallback={<LoadingSpinner message="Загрузка детей товара..." />}>
+          <ProductDetail 
+            productId={state.selectedProductId} 
+            products={state.products}
+            onClose={actions.handleCloseToList} 
+            onUpdateProduct={actions.updateProduct}
+            onEditProduct={actions.handleEditProduct}
+          />
+        </Suspense>
         <Toaster position="top-center" />
         </>
       );
     case 'edit-catalog':
       return (
         <>
-        <EditCatalogForm 
-          productId={state.selectedProductId}
-          products={state.products}
-          onClose={actions.handleCloseToList}
-          onUpdateProduct={actions.updateProduct}
-        />
+        <Suspense fallback={<LoadingSpinner message="Загрузка редактора каталога..." />}>
+          <EditCatalogForm 
+            productId={state.selectedProductId}
+            products={state.products}
+            onClose={actions.handleCloseToList}
+            onUpdateProduct={actions.updateProduct}
+          />
+        </Suspense>
         <Toaster position="top-center" />
         </>
       );
     case 'dashboard':
-      return <>
-        <Dashboard onNavigateBack={actions.handleCloseToList} />
+      return (
+        <>
+        <Suspense fallback={<LoadingSpinner message="Загрузка дашборда..." />}>
+          <Dashboard onNavigateBack={actions.handleCloseToList} />
+        </Suspense>
         <Toaster position="top-center" />
-      </>;
+        </>
+      );
     case 'order-detail':
       return (
         <>
-        <OrderDetail
-          orderId={state.selectedOrderId || ''}
-          onClose={actions.handleCloseToList}
-          onEdit={actions.handleEditOrder}
-          onDelete={actions.handleDeleteOrder}
-          onUpdateStatus={actions.handleUpdateOrderStatus}
-        />
+        <Suspense fallback={<LoadingSpinner message="Загрузка заказа..." />}>
+          <OrderDetail
+            orderId={state.selectedOrderId || ''}
+            onClose={actions.handleCloseToList}
+            onEdit={actions.handleEditOrder}
+            onDelete={actions.handleDeleteOrder}
+            onUpdateStatus={actions.handleUpdateOrderStatus}
+          />
+        </Suspense>
         <Toaster position="top-center" />
         </>
       );
     case 'add-order':
       return (
         <>
-        <AddOrder
-          products={state.products}
-          onClose={actions.handleCloseToList}
-          onCreateOrder={actions.handleCreateOrder}
-        />
+        <Suspense fallback={<LoadingSpinner message="Загрузка формы заказа..." />}>
+          <AddOrder
+            products={state.products}
+            onClose={actions.handleCloseToList}
+            onCreateOrder={actions.handleCreateOrder}
+          />
+        </Suspense>
         <Toaster position="top-center" />
         </>
       );
     case 'add-inventory-item':
       return (
         <>
-        <AddInventoryItem
-          onClose={actions.handleCloseToList}
-          onProcessSupply={(items) => {
-            console.log('Supply processed with items:', items);
-          }}
-        />
+        <Suspense fallback={<LoadingSpinner message="Загрузка формы склада..." />}>
+          <AddInventoryItem
+            onClose={actions.handleCloseToList}
+            onProcessSupply={(items) => {
+              console.log('Supply processed with items:', items);
+            }}
+          />
+        </Suspense>
         <Toaster position="top-center" />
         </>
       );
     case 'inventory-item-detail':
       return (
         <>
-        <InventoryItemDetail
-          itemId={state.selectedInventoryItemId || 0}
-          onClose={actions.handleCloseToList}
-          onUpdateItem={(itemId, updates) => {
-            console.log('Update inventory item:', itemId, updates);
-          }}
-        />
+        <Suspense fallback={<LoadingSpinner message="Загрузка элемента склада..." />}>
+          <InventoryItemDetail
+            itemId={state.selectedInventoryItemId || 0}
+            onClose={actions.handleCloseToList}
+            onUpdateItem={(itemId, updates) => {
+              console.log('Update inventory item:', itemId, updates);
+            }}
+          />
+        </Suspense>
         <Toaster position="top-center" />
         </>
       );
     case 'inventory-audit':
       return (
         <>
-        <InventoryAudit
-          onClose={actions.handleCloseToList}
-          onSaveAudit={(auditResults) => {
-            console.log('Audit results saved:', auditResults);
-          }}
-        />
+        <Suspense fallback={<LoadingSpinner message="Загрузка аудита склада..." />}>
+          <InventoryAudit
+            onClose={actions.handleCloseToList}
+            onSaveAudit={(auditResults) => {
+              console.log('Audit results saved:', auditResults);
+            }}
+          />
+        </Suspense>
         <Toaster position="top-center" />
         </>
       );
     case 'customer-detail':
       return (
         <>
-        <CustomerDetail
-          customerId={state.selectedCustomerId || 0}
-          customers={state.customers}
-          onClose={actions.handleCloseToList}
-          onUpdateCustomer={actions.updateCustomer}
-          onViewOrder={actions.handleViewOrder}
-        />
+        <Suspense fallback={<LoadingSpinner message="Загрузка клиента..." />}>
+          <CustomerDetail
+            customerId={state.selectedCustomerId || 0}
+            customers={state.customers}
+            onClose={actions.handleCloseToList}
+            onUpdateCustomer={actions.updateCustomer}
+            onViewOrder={actions.handleViewOrder}
+          />
+        </Suspense>
         <Toaster position="top-center" />
         </>
       );
     case 'add-customer':
       return (
         <>
-        <AddCustomer
-          onClose={actions.handleCloseToList}
-          onCreateCustomer={actions.handleCreateCustomer}
-        />
+        <Suspense fallback={<LoadingSpinner message="Загрузка формы клиента..." />}>
+          <AddCustomer
+            onClose={actions.handleCloseToList}
+            onCreateCustomer={actions.handleCreateCustomer}
+          />
+        </Suspense>
         <Toaster position="top-center" />
         </>
       );
