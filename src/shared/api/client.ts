@@ -59,6 +59,12 @@ class ApiClient {
   private responseInterceptors: ResponseInterceptor[] = [];
   private circuitBreaker = new CircuitBreaker();
   
+  // Response cache for GET requests
+  private responseCache = new Map<string, { data: any; timestamp: number; expiry: number }>();
+  
+  // In-flight request deduplication
+  private inflightRequests = new Map<string, Promise<any>>();
+  
   constructor(baseURL: string, defaultHeaders: Record<string, string> = {}) {
     this.baseURL = baseURL;
     this.defaultHeaders = {
@@ -75,6 +81,40 @@ class ApiClient {
     this.responseInterceptors.push(interceptor);
   }
   
+  // Cache management methods
+  private getCacheKey(url: string): string {
+    return url;
+  }
+  
+  private getCachedResponse<T>(cacheKey: string): T | null {
+    const cached = this.responseCache.get(cacheKey);
+    if (!cached) return null;
+    
+    const now = Date.now();
+    if (now > cached.expiry) {
+      this.responseCache.delete(cacheKey);
+      return null;
+    }
+    
+    return cached.data as T;
+  }
+  
+  private setCachedResponse<T>(cacheKey: string, data: T, ttl: number = 5 * 60 * 1000): void {
+    const now = Date.now();
+    this.responseCache.set(cacheKey, {
+      data,
+      timestamp: now,
+      expiry: now + ttl
+    });
+    
+    // Clean up old cache entries
+    if (this.responseCache.size > 100) {
+      const oldestKey = Array.from(this.responseCache.entries())
+        .sort(([, a], [, b]) => a.timestamp - b.timestamp)[0][0];
+      this.responseCache.delete(oldestKey);
+    }
+  }
+  
   async request<T = unknown>(path: string, config: RequestConfig = {}): Promise<T> {
     const method = config.method || 'GET';
     let requestConfig = { ...config, method };
@@ -85,12 +125,53 @@ class ApiClient {
     }
     
     const url = this.buildUrl(path, requestConfig.query);
+    const cacheKey = this.getCacheKey(url);
+    
+    // For GET requests, check cache and deduplication
+    if (method === 'GET') {
+      // Check cache first
+      const cachedResponse = this.getCachedResponse<T>(cacheKey);
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+      
+      // Check if request is already in flight
+      const inflightRequest = this.inflightRequests.get(cacheKey);
+      if (inflightRequest) {
+        return inflightRequest;
+      }
+    }
     
     // Circuit breaker check
     if (this.circuitBreaker.isOpen(url)) {
       throw new ServiceUnavailableError('Service circuit breaker is open');
     }
     
+    const requestPromise = this.executeRequest<T>(url, requestConfig, cacheKey);
+    
+    // Store in-flight request for deduplication
+    if (method === 'GET') {
+      this.inflightRequests.set(cacheKey, requestPromise);
+    }
+    
+    try {
+      const result = await requestPromise;
+      
+      // Cache GET responses
+      if (method === 'GET') {
+        this.setCachedResponse(cacheKey, result);
+      }
+      
+      return result;
+    } finally {
+      // Clean up in-flight request
+      if (method === 'GET') {
+        this.inflightRequests.delete(cacheKey);
+      }
+    }
+  }
+  
+  private async executeRequest<T>(url: string, requestConfig: RequestConfig, cacheKey: string): Promise<T> {
     try {
       const response = await this.fetchWithRetry(url, requestConfig);
       this.circuitBreaker.recordSuccess(url);
@@ -266,6 +347,38 @@ class ApiClient {
   
   async delete<T>(path: string, options?: Omit<RequestConfig, 'method'>): Promise<T> {
     return this.request<T>(path, { method: 'DELETE', ...options });
+  }
+  
+  // Cache invalidation methods
+  invalidateCache(pattern?: string): void {
+    if (!pattern) {
+      this.responseCache.clear();
+      return;
+    }
+    
+    const keysToDelete: string[] = [];
+    for (const [key] of this.responseCache) {
+      if (key.includes(pattern)) {
+        keysToDelete.push(key);
+      }
+    }
+    
+    keysToDelete.forEach(key => this.responseCache.delete(key));
+  }
+  
+  // Method to get cache statistics
+  getCacheStats() {
+    const entries = Array.from(this.responseCache.values());
+    const now = Date.now();
+    const validEntries = entries.filter(entry => now < entry.expiry);
+    
+    return {
+      totalEntries: this.responseCache.size,
+      validEntries: validEntries.length,
+      expiredEntries: this.responseCache.size - validEntries.length,
+      oldestEntry: entries.length > 0 ? Math.min(...entries.map(e => e.timestamp)) : null,
+      newestEntry: entries.length > 0 ? Math.max(...entries.map(e => e.timestamp)) : null
+    };
   }
 }
 
