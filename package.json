@@ -30,6 +30,7 @@
             "@radix-ui/react-toggle-group": "^1.1.2",
             "@radix-ui/react-tooltip": "^1.1.8",
             "@tanstack/react-query": "^5.87.1",
+            "@types/react-window": "^1.8.8",
             "class-variance-authority": "^0.7.1",
             "clsx": "*",
             "cmdk": "^1.1.1",
@@ -44,17 +45,20 @@
             "react-intersection-observer": "^9.16.0",
             "react-resizable-panels": "^2.1.7",
             "react-router-dom": "^7.8.2",
+            "react-window": "^2.1.0",
             "recharts": "^2.15.2",
             "sonner": "^2.0.3",
             "tailwind-merge": "*",
             "vaul": "^1.1.2"
       },
       "devDependencies": {
+            "@tanstack/react-query-devtools": "^5.87.3",
             "@types/node": "^20.10.0",
             "@vitejs/plugin-react-swc": "^3.10.2",
             "express": "^4.19.2",
             "http-proxy-middleware": "^2.0.6",
-            "vite": "^5.4.19"
+            "vite": "^5.4.19",
+            "vite-plugin-imagemin": "^0.6.1"
       },
       "scripts": {
             "dev": "vite",
