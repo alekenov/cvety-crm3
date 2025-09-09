@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft, Phone, Calendar, TrendingUp, Plus, Edit3, Check, X } from "lucide-react";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
+import { CustomerAPI, type Customer } from "../services/customerApi";
 
 interface Customer {
   id: number;
@@ -231,15 +232,49 @@ function formatOrderDate(date: Date): string {
 }
 
 export function CustomerDetail({ customerId, customers, onClose, onUpdateCustomer, onViewOrder }: CustomerDetailProps) {
-  const customer = customers.find(c => c.id === customerId);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [customer, setCustomer] = useState<Customer | null>(customers.find(c => c.id === customerId) || null);
   const [notes, setNotes] = useState(customer?.notes || '');
+  const [orders, setOrders] = useState<Array<{ id: string; number: string; date?: string; total: number; status: string }>>([]);
 
-  if (!customer) {
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const detail = await CustomerAPI.fetchCustomerDetail(customerId);
+        setCustomer(detail);
+        setNotes(detail.notes || '');
+        const ords = (detail as any).orders || [];
+        setOrders(ords.map((o: any) => ({ id: String(o.id ?? o.number), number: String(o.number ?? o.id), date: o.date, total: o.total, status: o.status_name || o.status })));
+      } catch (e: any) {
+        console.error('Failed to load customer detail', e);
+        setError('Не удалось загрузить карточку клиента');
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [customerId]);
+
+  if (loading) {
     return (
       <div className="bg-white min-h-screen max-w-md mx-auto flex items-center justify-center">
         <div className="text-center">
-          <h2 className="text-gray-900 mb-2">Клиент не найден</h2>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Загрузка клиента...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !customer) {
+    return (
+      <div className="bg-white min-h-screen max-w-md mx-auto flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-gray-900 mb-2">{error || 'Клиент не найден'}</h2>
           <Button onClick={onClose} variant="outline">
             Вернуться к списку
           </Button>
@@ -263,26 +298,7 @@ export function CustomerDetail({ customerId, customers, onClose, onUpdateCustome
     cancelled: { label: 'Отменен', color: 'bg-red-100 text-red-700' }
   };
 
-  // Фильтруем заказы этого клиента (в реальном приложении это будет API запрос)
-  const getCustomerOrders = (customerId: number) => {
-    const orderRanges = {
-      1: [1, 5],  // Анна Кожемякина - 5 заказов
-      2: [6, 8],  // Второй клиент - 3 заказа 
-      3: [9, 10], // Третий клиент - 2 заказа
-      4: [11, 12], // Четвертый клиент - 2 заказа
-      5: [13, 14]  // Пятый клиент - 2 заказа
-    };
-    
-    const range = orderRanges[customerId as keyof typeof orderRanges];
-    if (!range) return [];
-    
-    return mockOrders.filter(order => {
-      const orderId = parseInt(order.id);
-      return orderId >= range[0] && orderId <= range[1];
-    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  };
-
-  const customerOrders = getCustomerOrders(customerId);
+  // Orders now load from API into `orders` state
 
   const handleSaveNotes = () => {
     const updatedCustomer = { ...customer, notes };
@@ -414,9 +430,9 @@ export function CustomerDetail({ customerId, customers, onClose, onUpdateCustome
             <h3 className="text-gray-900">История заказов</h3>
           </div>
 
-          {customerOrders.length > 0 ? (
+          {orders.length > 0 ? (
             <div className="space-y-3">
-              {customerOrders.map((order) => (
+              {orders.map((order) => (
                 <div 
                   key={order.id}
                   className="p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
@@ -425,30 +441,16 @@ export function CustomerDetail({ customerId, customers, onClose, onUpdateCustome
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <span className="text-gray-900">#{order.number}</span>
-                      <div className={`px-2 py-0.5 rounded text-xs ${orderStatusConfig[order.status].color}`}>
-                        {orderStatusConfig[order.status].label}
+                      <div className={`px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700`}>
+                        {order.status}
                       </div>
                     </div>
                     <span className="text-gray-900">{formatCurrency(order.total)}</span>
                   </div>
                   
                   <div className="text-sm text-gray-600 mb-1">
-                    {formatOrderDate(order.date)}
+                    {order.date ? new Date(order.date).toLocaleDateString('ru-RU') : ''}
                   </div>
-                  
-                  <div className="text-sm text-gray-500">
-                    {order.items.length === 1 ? (
-                      order.items[0].name
-                    ) : (
-                      `${order.items[0].name}${order.items.length > 1 ? ` +${order.items.length - 1}` : ''}`
-                    )}
-                  </div>
-                  
-                  {order.items.length > 1 && (
-                    <div className="text-xs text-gray-400 mt-1">
-                      {order.items.length} позиций в заказе
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
