@@ -1,16 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { Plus, Search, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from './ui/button';
 import { Switch } from './ui/switch';
 import { Product } from '../src/types';
 import { getTimeAgo } from '../src/utils/date';
-// Removed URL utilities for clean routing
+// Use React Query hooks instead of context
+import { useProducts, useToggleProduct } from '../shared/hooks/useProducts';
 import { useAppContext } from '../src/contexts/AppContext';
 import { useAppActions } from '../src/hooks/useAppActions';
-// Import real API
-import { fetchProducts, toggleProductActive, type ProductDTO } from '../api/products';
 import { toast } from 'sonner';
+// Import virtualization components
+import { VirtualizedProductList, useVirtualization } from './VirtualizedProductList';
 
 
 function FilterTabs({ tabs, activeTab, onTabChange }: { 
@@ -24,14 +25,18 @@ function FilterTabs({ tabs, activeTab, onTabChange }: {
         <button
           key={tab.key}
           onClick={() => onTabChange(tab.key)}
-          className={`px-3 py-1 rounded text-sm transition-colors ${
+          className={`px-3 py-1 rounded text-sm transition-colors flex items-center gap-2 ${
             activeTab === tab.key
-              ? 'bg-blue-600 text-white'
+              ? 'bg-primary text-primary-foreground'
               : 'bg-gray-100 text-gray-700'
           }`}
         >
-          {tab.label}
-          {tab.count !== undefined && ` (${tab.count})`}
+          <span>{tab.label}</span>
+          {tab.count !== undefined && (
+            <span className={`${activeTab === tab.key ? 'bg-white/20 text-primary-foreground' : 'bg-white text-gray-600'} px-1.5 py-0.5 rounded text-xs leading-none`}>
+              {tab.count}
+            </span>
+          )}
         </button>
       ))}
     </div>
@@ -68,11 +73,11 @@ function PageHeader({ title, actions }: {
   );
 }
 
-function ProductItem({ id, image, title, price, isAvailable, createdAt, onToggle, onView, searchQuery }: Product & {
+const ProductItem = React.memo(({ id, image, title, price, isAvailable, createdAt, onToggle, onView, searchQuery }: Product & {
   onToggle: (id: number) => void;
   onView: (id: number) => void;
   searchQuery?: string;
-}) {
+}) => {
   const handleSwitchClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     onToggle(id);
@@ -144,155 +149,126 @@ function ProductItem({ id, image, title, price, isAvailable, createdAt, onToggle
       </div>
     </div>
   );
-}
+});
 
 export default function ProductsList() {
   const navigate = useNavigate();
   const state = useAppContext();
-  const actions = useAppActions({
-    setCurrentScreen: state.setCurrentScreen,
-    navigateToScreen: state.navigateToScreen,
-    navigateBack: state.navigateBack,
-    setActiveTab: state.setActiveTab,
-    setSelectedProductId: state.setSelectedProductId,
-    setSelectedOrderId: state.setSelectedOrderId,
-    setSelectedInventoryItemId: state.setSelectedInventoryItemId,
-    setSelectedCustomerId: state.setSelectedCustomerId,
-    setProducts: state.setProducts,
-    setOrders: state.setOrders,
-    setCustomers: state.setCustomers,
-    products: state.products,
-    customers: state.customers
-  });
   
-  // Real API data state
-  const [products, setProducts] = useState<Product[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const onAddProduct = () => navigate('/products/add');
-  const onViewProduct = (id: number) => navigate(`/products/${id}`);
-  // Prevent double-toggles while request is in-flight
-  const inFlight = React.useRef<Set<number>>(new Set());
-
-  const onToggleProduct = async (id: number) => {
-    if (inFlight.current.has(id)) return;
-    const idx = products.findIndex(p => p.id === id);
-    if (idx === -1) return;
-    const prev = products[idx];
-    const nextAvailable = !prev.isAvailable;
-    // optimistic update
-    setProducts(prevList => prevList.map(p => p.id === id ? { ...p, isAvailable: nextAvailable } : p));
-    inFlight.current.add(id);
-    try {
-      await toggleProductActive(id, nextAvailable);
-      toast.success(nextAvailable ? 'Товар включён' : 'Товар выключен');
-    } catch (e: any) {
-      // revert
-      setProducts(prevList => prevList.map(p => p.id === id ? { ...p, isAvailable: !nextAvailable } : p));
-      console.error('Failed to toggle product', e);
-      toast.error('Не удалось изменить статус товара');
-    } finally {
-      inFlight.current.delete(id);
-    }
-  };
-  // Local state without URL synchronization for clean routing
+  // Local state for UI
   const [filter, setFilter] = useState<'vitrina' | 'catalog'>('vitrina');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
-  // Function to load products from API
-  const loadProducts = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      
-      const response = await fetchProducts({
-        type: filter,
-        limit: 100
-      });
-      
-      if (response.success && response.data) {
-        // Transform ProductDTO to Product
-        const transformedProducts: Product[] = response.data.map((dto: ProductDTO) => ({
-          id: dto.id,
-          image: dto.image,
-          images: dto.images,
-          title: dto.title,
-          price: dto.price,
-          isAvailable: dto.isAvailable,
-          createdAt: dto.createdAt ? new Date(dto.createdAt) : new Date(),
-          type: dto.type,
-          width: dto.width,
-          height: dto.height,
-          video: dto.video,
-          duration: dto.duration,
-          discount: dto.discount,
-          composition: dto.composition,
-          colors: dto.colors,
-          catalogWidth: dto.catalogWidth,
-          catalogHeight: dto.catalogHeight,
-          productionTime: dto.productionTime
-        }));
-        
-        setProducts(transformedProducts);
-      } else {
-        setError('Не удалось загрузить товары');
-      }
-    } catch (err) {
-      console.error('Error loading products:', err);
-      setError('Ошибка при загрузке товаров');
-    } finally {
-      setIsLoading(false);
-    }
+  // React Query hooks
+  const { data: productsResponse, isLoading, error, isError } = useProducts({ 
+    type: filter, 
+    limit: 100 
+  });
+  const toggleProductMutation = useToggleProduct();
+
+  // Navigation handlers
+  const onAddProduct = () => navigate('/products/add');
+  const onViewProduct = (id: number) => navigate(`/products/${id}`);
+  
+  // Toggle with optimistic updates via React Query
+  const onToggleProduct = (id: number) => {
+    toggleProductMutation.mutate(id);
   };
+  
+  // Memoized products transformation for performance
+  const products = useMemo(() => {
+    if (!productsResponse?.data) return [];
+    
+    // Transform ProductDTO to Product format
+    return productsResponse.data.map((dto: any) => ({
+      id: dto.id,
+      image: dto.image,
+      images: dto.images,
+      title: dto.title,
+      price: dto.price,
+      isAvailable: dto.isAvailable,
+      createdAt: dto.createdAt || new Date(),
+      type: dto.type,
+      width: dto.width,
+      height: dto.height,
+      video: dto.video,
+      duration: dto.duration,
+      discount: dto.discount,
+      composition: dto.composition,
+      colors: dto.colors,
+      catalogWidth: dto.catalogWidth,
+      catalogHeight: dto.catalogHeight,
+      productionTime: dto.productionTime
+    } as Product));
+  }, [productsResponse?.data]);
 
-  // Load products on component mount and filter change
-  useEffect(() => {
-    loadProducts();
-  }, [filter]);
-
-  const handleFilterChange = (newFilter: 'vitrina' | 'catalog') => {
+  // Memoized handlers for better performance
+  const handleFilterChange = useCallback((newFilter: 'vitrina' | 'catalog') => {
     setFilter(newFilter);
-  };
+  }, []);
 
-  const handleSearchClick = () => {
-    const newIsSearchOpen = !isSearchOpen;
-    setIsSearchOpen(newIsSearchOpen);
-    if (!newIsSearchOpen) {
-      setSearchQuery('');
-    }
-  };
+  const handleSearchClick = useCallback(() => {
+    setIsSearchOpen(prev => {
+      if (!prev) {
+        setSearchQuery('');
+      }
+      return !prev;
+    });
+  }, []);
 
-  const handleSearchChange = (query: string) => {
+  const handleSearchChange = useCallback((query: string) => {
     setSearchQuery(query);
-  };
+  }, []);
 
-  const handleClearSearch = () => {
+  const handleClearSearch = useCallback(() => {
     setSearchQuery('');
     setIsSearchOpen(false);
-  };
+  }, []);
 
-  const vitrinaProducts = products.filter((product: Product) => product.type === 'vitrina');
-  const catalogProducts = products.filter((product: Product) => product.type === 'catalog');
+  // Memoized navigation handlers to prevent ProductItem re-renders
+  const handleProductView = useCallback((id: number) => {
+    onViewProduct(id);
+  }, [onViewProduct]);
+  
+  const handleProductToggle = useCallback((id: number) => {
+    onToggleProduct(id);
+  }, [onToggleProduct]);
 
-  // Показываем только активные товары для обеих категорий
-  let filteredProducts = filter === 'vitrina'
-    ? vitrinaProducts.filter(p => p.isAvailable)
-    : catalogProducts.filter(p => p.isAvailable);
+  // URL sync removed for cleaner routing
 
-  // Поиск по названию/цене
-  const runSearch = (items: Product[], q: string) => {
-    if (!q.trim()) return items;
-    const lower = q.toLowerCase().trim();
-    return items.filter(p =>
-      p.title.toLowerCase().includes(lower) ||
-      p.price.toLowerCase().includes(lower)
+  // Memoized filtering for performance
+  const { vitrinaProducts, catalogProducts, activeVitrinaCount, activeCatalogCount } = useMemo(() => {
+    const vitrina = products.filter((product: Product) => product.type === 'vitrina');
+    const catalog = products.filter((product: Product) => product.type === 'catalog');
+    
+    return {
+      vitrinaProducts: vitrina,
+      catalogProducts: catalog,
+      activeVitrinaCount: vitrina.filter(p => p.isAvailable).length,
+      activeCatalogCount: catalog.filter(p => p.isAvailable).length
+    };
+  }, [products]);
+
+  // Memoized filtered and searched products
+  const filteredProducts = useMemo(() => {
+    // Filter by type and availability
+    const baseProducts = filter === 'vitrina'
+      ? vitrinaProducts.filter(p => p.isAvailable)
+      : catalogProducts.filter(p => p.isAvailable);
+
+    // Apply search filter
+    if (!searchQuery.trim()) return baseProducts;
+    
+    const searchLower = searchQuery.toLowerCase().trim();
+    return baseProducts.filter(p =>
+      p.title.toLowerCase().includes(searchLower) ||
+      p.price.toLowerCase().includes(searchLower)
     );
-  };
-  filteredProducts = runSearch(filteredProducts, searchQuery);
+  }, [filter, vitrinaProducts, catalogProducts, searchQuery]);
 
-  const activeVitrinaCount = vitrinaProducts.filter(p => p.isAvailable).length;
-  const activeCatalogCount = catalogProducts.filter(p => p.isAvailable).length;
+  // Virtualization settings
+  const virtualization = useVirtualization(filteredProducts.length, 500);
 
   const tabs = [
     { key: 'vitrina', label: 'Витрина', count: activeVitrinaCount },
@@ -327,18 +303,20 @@ export default function ProductsList() {
     );
   }
 
-  // Error state
-  if (error) {
+  // Error state  
+  if (isError) {
     return (
       <div className="bg-white min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <p className="text-red-600 mb-4">{error}</p>
-          <button 
-            onClick={loadProducts}
+          <p className="text-red-600 mb-4">
+            {error?.message || 'Ошибка при загрузке товаров'}
+          </p>
+          <Button 
+            onClick={() => window.location.reload()}
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
           >
             Повторить попытку
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -389,15 +367,27 @@ export default function ProductsList() {
       {/* Products List */}
       <div className="pb-20">
         {filteredProducts.length > 0 ? (
-          filteredProducts.map((product) => (
-            <ProductItem 
-              key={product.id}
-              {...product}
-              onToggle={onToggleProduct}
-              onView={onViewProduct}
+          virtualization.shouldVirtualize ? (
+            <VirtualizedProductList
+              products={filteredProducts}
+              itemHeight={virtualization.itemHeight}
+              height={virtualization.height}
+              onToggle={handleProductToggle}
+              onView={handleProductView}
               searchQuery={searchQuery}
+              ItemComponent={ProductItem}
             />
-          ))
+          ) : (
+            filteredProducts.map((product) => (
+              <ProductItem 
+                key={product.id}
+                {...product}
+                onToggle={handleProductToggle}
+                onView={handleProductView}
+                searchQuery={searchQuery}
+              />
+            ))
+          )
         ) : (
           <EmptyState
             icon={searchQuery ? <Search className="w-8 h-8 text-gray-400" /> : <Plus className="w-8 h-8 text-gray-400" />}
