@@ -33,6 +33,13 @@ import { Screen } from '@/shared/types';
 import { useAppContext } from '@/src/contexts/AppContext';
 import { useAppActions } from '@/src/hooks/useAppActions';
 
+// Prefetch hooks for performance optimization
+import { useOrders } from '@/shared/hooks/useOrders';
+import { useProducts } from '@/shared/hooks/useProducts';
+import { useCustomers } from '@/shared/hooks/useCustomers';
+import { useInventory } from '@/shared/hooks/useInventory';
+import { useFloristProfile, useShopInfo, useColleagues } from '@/shared/hooks/useProfile';
+
 function ProductItem({ id, image, title, price, isAvailable, createdAt, onToggle, onView }: Product & {
   onToggle: (id: number) => void;
   onView: (id: number) => void;
@@ -93,6 +100,16 @@ export default function App() {
   // Get current path to determine which tab should be active
   const currentPath = location.pathname;
   const isCustomersPage = currentPath === '/customers';
+  
+  // Prefetch all data at App level to prevent duplicate requests
+  // These hooks will cache data that child components can use
+  useOrders(); // Prefetch orders for tab switching
+  useProducts({ type: 'vitrina', limit: 50 }); // Prefetch vitrina products
+  useCustomers(); // Prefetch customers for instant tab switching
+  useInventory(); // Prefetch inventory for instant tab switching
+  useFloristProfile(); // Prefetch profile data
+  useShopInfo(); // Prefetch shop info
+  useColleagues(); // Prefetch colleagues
   
   // Set active tab based on current path
   React.useEffect(() => {
