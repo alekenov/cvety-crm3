@@ -2,9 +2,18 @@
   import { defineConfig } from 'vite';
   import react from '@vitejs/plugin-react-swc';
   import path from 'path';
+  import viteImagemin from 'vite-plugin-imagemin';
 
 export default defineConfig({
-    plugins: [react()],
+    plugins: [
+      react(),
+      // Image optimization in production builds only
+      process.env.NODE_ENV === 'production' && viteImagemin({
+        pngquant: { quality: [0.65, 0.8] },
+        mozjpeg: { quality: 75 },
+        webp: { quality: 75 }
+      })
+    ].filter(Boolean),
     resolve: {
       extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],
       alias: {
@@ -52,8 +61,6 @@ export default defineConfig({
         '@radix-ui/react-alert-dialog@1.1.6': '@radix-ui/react-alert-dialog',
         '@radix-ui/react-accordion@1.2.3': '@radix-ui/react-accordion',
         '@': path.resolve(__dirname, './src'),
-        // Temporary alias for legacy nested structure. Migrate away gradually.
-        '@core': path.resolve(__dirname, './src/src'),
         '@/shared': path.resolve(__dirname, './src/shared'),
         '@/features': path.resolve(__dirname, './src/features'),
         '@/app': path.resolve(__dirname, './src/app'),
@@ -66,6 +73,76 @@ export default defineConfig({
     build: {
       target: 'esnext',
       outDir: 'build',
+      // Optimize build performance
+      sourcemap: false, // Disable sourcemaps for faster builds
+      minify: 'esbuild', // Use esbuild for faster minification
+      // Remove console.log in production
+      esbuild: {
+        drop: ['console', 'debugger'],
+      },
+      // Chunk size limits
+      chunkSizeWarningLimit: 300,
+      rollupOptions: {
+        output: {
+          // Improved chunk splitting strategy
+          manualChunks(id) {
+            // React and core libraries
+            if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) {
+              return 'react-vendor';
+            }
+            
+            // Router
+            if (id.includes('react-router')) {
+              return 'react-router';
+            }
+            
+            // UI library chunks
+            if (id.includes('@radix-ui')) {
+              return 'radix-ui';
+            }
+            
+            // Icons and UI utilities
+            if (id.includes('lucide-react') || id.includes('class-variance-authority') || 
+                id.includes('clsx') || id.includes('tailwind-merge') || id.includes('cmdk') ||
+                id.includes('vaul') || id.includes('sonner')) {
+              return 'ui-utils';
+            }
+            
+            // React Query and forms
+            if (id.includes('@tanstack/react-query') || id.includes('react-hook-form') ||
+                id.includes('react-day-picker') || id.includes('input-otp')) {
+              return 'forms-data';
+            }
+            
+            // Virtualization
+            if (id.includes('react-window')) {
+              return 'virtualization';
+            }
+            
+            // Charts
+            if (id.includes('recharts')) {
+              return 'charts';
+            }
+            
+            // Other specialized libraries
+            if (id.includes('embla-carousel')) return 'carousel';
+            if (id.includes('react-resizable-panels')) return 'panels';
+            if (id.includes('react-intersection-observer')) return 'intersection';
+            if (id.includes('next-themes')) return 'themes';
+            
+            // All other node_modules into vendor chunk
+            if (id.includes('node_modules')) {
+              return 'vendor';
+            }
+          },
+          
+          // Optimize chunk size and naming
+          chunkFileNames: (chunkInfo) => {
+            const id = chunkInfo.name?.replace(/[\[\]]/g, '');
+            return `assets/${id}-[hash].js`;
+          }
+        }
+      }
     },
     server: {
       port: 3008,
